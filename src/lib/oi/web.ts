@@ -334,12 +334,17 @@ async function readArticle(a: GdeltArticle, words: string[], deps: WebDeps, sign
 
 /* ───────────────────────────── Wikipedia ───────────────────────────── */
 
-/** The lead of the article a topic finds, with its link. */
+/**
+ * The lead of the first article a topic finds, with its link. A
+ * disambiguation page ("Solana may refer to:") is a list of other pages, not
+ * background: the next result is taken instead.
+ */
 export function parseWikipedia(body: string): { title: string; extract: string; url: string } | null {
   try {
-    const j = JSON.parse(body) as { query?: { pages?: { title?: string; extract?: string; fullurl?: string; index?: number }[] } };
+    const j = JSON.parse(body) as { query?: { pages?: { title?: string; extract?: string; fullurl?: string; index?: number; pageprops?: Record<string, unknown> }[] } };
     const pages = (j.query?.pages ?? []).slice().sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-    const p = pages.find(x => x.extract && x.fullurl && /^https:\/\/[a-z-]+\.wikipedia\.org\//.test(x.fullurl));
+    const p = pages.find(x => x.extract && x.fullurl && /^https:\/\/[a-z-]+\.wikipedia\.org\//.test(x.fullurl)
+      && !(x.pageprops && 'disambiguation' in x.pageprops) && !/\bmay (also )?refer to:?\s*$/i.test(x.extract.trim()));
     return p ? { title: text(p.title, 120), extract: clipText(text(p.extract, 2000), 600), url: p.fullurl! } : null;
   } catch {
     return null;
@@ -347,7 +352,7 @@ export function parseWikipedia(body: string): { title: string; extract: string; 
 }
 
 async function searchWikipedia(topic: string, deps: WebDeps, signal: AbortSignal) {
-  const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrsearch=${encodeURIComponent(topic)}&gsrlimit=1&prop=extracts%7Cinfo&exintro=1&explaintext=1&inprop=url&redirects=1`;
+  const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrsearch=${encodeURIComponent(topic)}&gsrlimit=3&prop=extracts%7Cinfo%7Cpageprops&ppprop=disambiguation&exintro=1&explaintext=1&exlimit=3&inprop=url&redirects=1`;
   const res = await deps.api(url, { headers: { 'user-agent': UA }, signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]) }).catch(() => null);
   return res?.ok ? parseWikipedia(await res.text().catch(() => '')) : null;
 }

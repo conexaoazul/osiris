@@ -265,5 +265,54 @@ export function worldCourses(returns: number[], stepsPerPeriod: number[], worlds
   return qs.map(q => candidates[Math.min(pool - 1, Math.floor(q * pool))]);
 }
 
+/** What the worlds' events do to a price question once the market's randomness is integrated out. */
+export interface Priced {
+  /** A level: the share of paths that meet it. */
+  probability?: number;
+  /** The price at the horizon, across every world's paths. */
+  p10: number;
+  p50: number;
+  p90: number;
+}
+
+/**
+ * The simulation, priced: each world's events, as the push they gave the
+ * price period by period (`pushes[world][period]`, a multiple applied as the
+ * period opens), run through thousands of the market's own paths. A handful
+ * of worlds is too few to count outcomes in; this keeps what each world's
+ * story did to the price and lets the market's randomness average out, so
+ * the worlds pooled read as a probability, not as a tally of three coin
+ * tosses.
+ */
+export function pricedWorlds(m: Measure, price: number, returns: number[], steps: number[], pushes: number[][], seed: number, perWorld = 2000): Priced {
+  const draw = rng(seed);
+  const n = returns.length;
+  const finals: number[] = [];
+  let hits = 0;
+  const above = m.direction !== 'below';
+  const at = (level: number) => (above ? level >= m.threshold! : level <= m.threshold!);
+  for (const push of pushes.length ? pushes : [[]]) {
+    for (let p = 0; p < perWorld; p++) {
+      let x = 0, lift = 1, met = false;
+      for (let i = 0; i < steps.length; i++) {
+        lift *= push[i] ?? 1;
+        if (m.touch && m.threshold !== undefined && !met && at(price * Math.exp(x) * lift)) met = true;
+        for (let d = 0; d < steps[i] && n; d++) {
+          x += returns[Math.floor(draw() * n)];
+          if (m.touch && m.threshold !== undefined && !met && at(price * Math.exp(x) * lift)) met = true;
+        }
+      }
+      const end = price * Math.exp(x) * lift;
+      finals.push(end);
+      if (m.threshold !== undefined && (m.touch ? met : at(end))) hits++;
+    }
+  }
+  finals.sort((a, b) => a - b);
+  return {
+    ...(m.threshold !== undefined ? { probability: hits / finals.length } : {}),
+    p10: quantile(finals, 0.1), p50: quantile(finals, 0.5), p90: quantile(finals, 0.9),
+  };
+}
+
 /** A price as the prompts and the panel say it: "$119.57", "4,512", "1.0842 EUR". */
 export const priceText = money;

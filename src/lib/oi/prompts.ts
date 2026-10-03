@@ -450,11 +450,17 @@ export function anchorsBlock(frame: Frame, quant: Quant | null, odds: ContextIte
     const same = frame.market === o.id;
     lines.push(`- [${o.id}] ${same ? 'Prediction market on THIS question' : 'Related prediction market (a different question: context, not an anchor)'}: "${o.title}". ${o.excerpt ?? ''}`);
   }
-  if (last) lines.push(`- The simulation: ${trajectoryLine(frame, last)}.`);
+  if (last) lines.push(`- The worlds as they ended: ${trajectoryLine(frame, last)}.`);
+  const sim = quant?.simulated;
+  if (sim) {
+    lines.push(frame.kind === 'binary' && sim.probability !== undefined
+      ? `- The simulation, priced (each world's events applied, as the push they gave the price, across thousands of the market's own paths): ${pct(sim.probability)} YES. A handful of worlds is too few to count outcomes in; this is the simulation's probability.`
+      : `- The simulation, priced (each world's events applied across thousands of the market's own paths): the middle at ${priceText(sim.p50, quant!.currency)}, 80% between ${priceText(sim.p10, quant!.currency)} and ${priceText(sim.p90, quant!.currency)}.`);
+  }
   return lines.join('\n');
 }
 
-function reportAsk(frame: Frame, last: RoundStat | undefined): { ask: string; fields: string; push: string } {
+function reportAsk(frame: Frame, last: RoundStat | undefined, simulated?: { probability?: number; p10: number; p50: number; p90: number }): { ask: string; fields: string; push: string } {
   if (frame.kind === 'choice') {
     const pooled = last?.shares ? frame.outcomes.map((o, i) => `${o} ${pct(last.shares![i] ?? 0)}`).join(', ') : 'unknown';
     return {
@@ -464,7 +470,8 @@ function reportAsk(frame: Frame, last: RoundStat | undefined): { ask: string; fi
     };
   }
   if (frame.kind === 'number') {
-    const pooled = last?.value ? `${formatAmount(last.value.median)} (worlds from ${formatAmount(last.value.min)} to ${formatAmount(last.value.max)})` : 'unknown';
+    const pooled = simulated ? `${formatAmount(simulated.p50)} (80% of the priced paths between ${formatAmount(simulated.p10)} and ${formatAmount(simulated.p90)})`
+      : last?.value ? `${formatAmount(last.value.median)} (worlds from ${formatAmount(last.value.min)} to ${formatAmount(last.value.max)})` : 'unknown';
     return {
       ask: `Give a calibrated final estimate${frame.unit ? ` in ${frame.unit}` : ''} with an 80% range. The worlds' median is ${pooled}; if you move far from it, say why in deviation_reason.`,
       fields: '"estimate": {"value": number, "low": number, "high": number}',
@@ -472,7 +479,7 @@ function reportAsk(frame: Frame, last: RoundStat | undefined): { ask: string; fi
     };
   }
   return {
-    ask: `Give a calibrated final probability that the proposition resolves YES. The worlds pooled give ${last ? pct(last.consensus) : 'unknown'}. Weigh what the prediction rests on: a liquid prediction market on this same question is real money from many traders and usually the best single estimate; the statistical baseline is the outside view for a price; the worlds are a handful, a small sample, but each tells you what could move the outcome. Move off the market or the baseline only for reasons the sources and the simulation give, and if you end more than 10 points from the pool or from such a market, say why in deviation_reason.`,
+    ask: `Give a calibrated final probability that the proposition resolves YES. The worlds pooled give ${simulated?.probability !== undefined ? `${pct(simulated.probability)} (priced: each world's events applied across the market's own paths)` : last ? pct(last.consensus) : 'unknown'}. Weigh what the prediction rests on: a liquid prediction market on this same question is real money from many traders and usually the best single estimate; the statistical baseline is the outside view for a price; the worlds are a handful, a small sample, but each tells you what could move the outcome. Move off the market or the baseline only for reasons the sources and the simulation give, and if you end more than 10 points from the pool or from such a market, say why in deviation_reason.`,
     fields: '"probability": 0.0-1.0',
     push: '"push": "yes|no"',
   };
@@ -494,13 +501,15 @@ export interface ReportInput {
   moves?: Move[];
   /** What the prediction rests on (see anchorsBlock). */
   anchors?: string;
+  /** A price question: the simulation priced across the market's own paths. */
+  simulated?: { probability?: number; p10: number; p50: number; p90: number };
   today: string;
 }
 
 /** The prediction: the probability the worlds add up to, and the story of how it most likely unfolds. */
 export function reportPrompt(input: ReportInput): string {
   const f = input.frame;
-  const { ask, fields, push } = reportAsk(f, input.rounds[input.rounds.length - 1]);
+  const { ask, fields, push } = reportAsk(f, input.rounds[input.rounds.length - 1], input.simulated);
   const means = f.kind === 'number' ? '"means": "up|down"' : f.kind === 'choice' ? '"means": "yes|no", "favors": "the outcome it points to"' : '"means": "yes|no"';
   const ledger = input.moves?.length ? ledgerBlock(f, evidenceLedger(input.moves)) : '';
   const span = input.periods.length ? `from ${input.periods[0].start} to ${input.periods[input.periods.length - 1].end}` : 'to the horizon';

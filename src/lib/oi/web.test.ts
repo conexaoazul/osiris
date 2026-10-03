@@ -87,6 +87,16 @@ describe('Wikipedia', () => {
     expect(parseWikipedia(body)).toEqual({ title: 'OPEC', url: 'https://en.wikipedia.org/wiki/OPEC', extract: 'The Organization of the Petroleum Exporting Countries is a cartel.' });
     expect(parseWikipedia(JSON.stringify({ query: { pages: [{ title: 'X', fullurl: 'https://evil.example/', extract: 'x' }] } }))).toBeNull();
   });
+
+  it('passes over a disambiguation page to the article itself', () => {
+    const body = JSON.stringify({ query: { pages: [
+      { index: 1, title: 'Solana', fullurl: 'https://en.wikipedia.org/wiki/Solana', extract: 'Solana is the Spanish word for the "sunny side" of a mount or valley. It may refer to:', pageprops: { disambiguation: '' } },
+      { index: 2, title: 'Solana (blockchain platform)', fullurl: 'https://en.wikipedia.org/wiki/Solana_(blockchain_platform)', extract: 'Solana is a blockchain platform which uses a proof-of-stake mechanism.' },
+    ] } });
+    expect(parseWikipedia(body)?.title).toBe('Solana (blockchain platform)');
+    // Even when the page is not marked as one.
+    expect(parseWikipedia(JSON.stringify({ query: { pages: [{ index: 1, title: 'Mercury', fullurl: 'https://en.wikipedia.org/wiki/Mercury', extract: 'Mercury may refer to:' }] } }))).toBeNull();
+  });
 });
 
 describe('researchWeb', () => {

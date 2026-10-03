@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baseline, chanceOf, demean, logReturns, resample, rng, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
+import { baseline, chanceOf, demean, logReturns, pricedWorlds, resample, rng, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
 
 /** A year and a half of daily closes from a fixed walk: up 1%, down 1%, in a repeating pattern, every calendar day like a coin. */
 function walk(days: number, start = 100, moves = [0.01, -0.01, 0.02, -0.015, 0.005, -0.012]): Series {
@@ -101,6 +101,30 @@ describe('the baseline', () => {
     const q = baseline(s, { symbol: 'TST-USD' }, s.dates[549], '2026-12-31')!;
     expect(q.probability).toBeUndefined();
     expect(baseline(s, { symbol: 'TST-USD' }, '2027-01-01', '2026-12-31')).toBeNull();
+  });
+});
+
+describe('the simulation, priced', () => {
+  const r = demean(logReturns(walk(500)));
+  const m = { symbol: 'T', threshold: 120, direction: 'above' as const, touch: true };
+
+  it('matches the plain chance when no world pushed the price', () => {
+    const flat = pricedWorlds(m, 100, r, [30, 30, 30], [[1, 1, 1], [1, 1, 1]], 5);
+    const plain = chanceOf(m, 100, r, 90, 5, 4000);
+    expect(Math.abs(flat.probability! - plain)).toBeLessThan(0.04);
+  });
+
+  it('rises when the worlds’ events lift the price, falls when they sink it, and ranges the end price', () => {
+    const base = pricedWorlds(m, 100, r, [30, 30, 30], [[1, 1, 1]], 5).probability!;
+    const lifted = pricedWorlds(m, 100, r, [30, 30, 30], [[1.1, 1, 1], [1.05, 1.05, 1]], 5);
+    const sunk = pricedWorlds(m, 100, r, [30, 30, 30], [[0.9, 1, 1]], 5).probability!;
+    expect(lifted.probability!).toBeGreaterThan(base);
+    expect(sunk).toBeLessThan(base);
+    expect(lifted.p10).toBeLessThan(lifted.p50);
+    expect(lifted.p50).toBeLessThan(lifted.p90);
+    // A push of 30% at the open of the first period meets a level 20% up at once.
+    expect(pricedWorlds(m, 100, r, [30], [[1.3]], 5).probability).toBe(1);
+    expect(pricedWorlds({ symbol: 'T' }, 100, r, [30], [[1]], 5).probability).toBeUndefined();
   });
 });
 

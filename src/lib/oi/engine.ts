@@ -38,7 +38,7 @@
  * draws the analysis while it happens.
  */
 import { roundStatFor } from './aggregate';
-import { baseline, chanceOf, demean, logReturns, priceText, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
+import { baseline, chanceOf, demean, logReturns, priceText, pricedWorlds, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
 import { DEPTHS, PANEL_SEED_MAX, estimateCalls, type SeedScope } from './depths';
 import { gatherContext, onTopic, terms } from './context';
 import { simulationClock } from './clock';
@@ -273,6 +273,8 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   })() : null;
   /** How far the events in each world have pushed its price beyond its own course, as a multiple. */
   const pushed = new Map<string, number>();
+  /** Each world's push, period by period: the simulation's story as it bears on the price. */
+  const pushLog = new Map<string, number[]>();
   const money = (n: number) => priceText(n, pricing?.currency ?? '');
   const priceNow = (w: string) => latest.get(w)?.price?.close ?? pricing?.start ?? 0;
 
@@ -369,6 +371,9 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     const pr = pricing!;
     const after = before * (1 + push);
     pushed.set(w, after);
+    const log = pushLog.get(w) ?? [];
+    log[period.index - 1] = 1 + push;
+    pushLog.set(w, log);
     const open = priceNow(w);
     const close = pr.start * course.close * after;
     const price = { close, high: Math.max(open, close, pr.start * course.high * after), low: Math.min(open, close, pr.start * course.low * after) };
@@ -412,20 +417,27 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   injected.push(...late);
   s.emit({ t: 'phase', phase: 'report', label: 'Writing the prediction' });
   const lastStat = stats[stats.length - 1];
+  // A price question: the worlds' events run through the market's own paths, so a handful of worlds reads as a probability.
+  const priced = pricing && quant
+    ? pricedWorlds(pricing.measure, pricing.start, pricing.returns, pricing.steps, worlds.map(w => periods.map((_, i) => pushLog.get(w)?.[i] ?? 1)), seedOf(`${pricing.symbol}:${horizon}:priced`))
+    : null;
+  const finalQuant = quant && priced ? { ...quant, simulated: priced } : quant;
+  if (finalQuant && priced) s.emit({ t: 'quant', quant: finalQuant });
   const swarm = {
-    probability: lastStat.consensus,
+    probability: priced?.probability ?? lastStat.consensus,
     shares: lastStat.shares,
-    estimate: lastStat.value ? { value: lastStat.value.median, low: lastStat.value.low, high: lastStat.value.high } : undefined,
+    estimate: priced && frame.kind === 'number' ? { value: priced.p50, low: priced.p10, high: priced.p90 }
+      : lastStat.value ? { value: lastStat.value.median, low: lastStat.value.low, high: lastStat.value.high } : undefined,
   };
   const summaries = worlds.map(w => ({
     world: w,
     history: historyBlock(periods, events.filter(e => e.world === w), periods.length + 1),
     outcome: worldOutcome(frame, latest.get(w)),
   }));
-  const anchors = anchorsBlock(frame, quant, sources.filter(c => c.kind === 'odds'), lastStat);
+  const anchors = anchorsBlock(frame, finalQuant, sources.filter(c => c.kind === 'odds'), lastStat);
   const report = parseReport(
     await s.json({
-      user: reportPrompt({ frame, brief, periods, worlds: summaries, rounds: stats, injects: injected, evidence, data, citable, moves, anchors, today }),
+      user: reportPrompt({ frame, brief, periods, worlds: summaries, rounds: stats, injects: injected, evidence, data, citable, moves, anchors, simulated: priced ?? undefined, today }),
       maxTokens: 4000, temperature: 0.3, timeoutMs: 180_000,
     }),
     swarm, actorIds, frame, new Set(texts.keys()), new Set(worlds),

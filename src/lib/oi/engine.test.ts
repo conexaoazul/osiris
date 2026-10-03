@@ -224,6 +224,10 @@ describe('runEngine', () => {
     expect(report).toContain('WHAT THE PREDICTION RESTS ON');
     expect(report).toContain('Statistical baseline (SOL-USD');
     expect(report).toContain('[m1] Prediction market on THIS question');
+    // The worlds' events, priced across the market's own paths, are the simulation's probability, and the report's starting point.
+    expect(s.quant?.simulated?.probability).toBeGreaterThan(0);
+    expect(report).toContain('The simulation, priced');
+    expect(s.report?.swarm).toBeCloseTo(s.quant!.simulated!.probability!, 6);
   });
 
   it('lands an injected event in every world from the next period on, and in the report', async () => {

@@ -105,6 +105,11 @@ export interface Quant {
   p90: number;
   /** How it was worked out, in a sentence. */
   method: string;
+  /**
+   * Once the simulation has run: the same market paths with each world's
+   * events applied (the push they gave the price), pooled across the worlds.
+   */
+  simulated?: { probability?: number; p10: number; p50: number; p90: number };
 }
 
 /** What a prediction market prices a question at: real money on the outcome. */
