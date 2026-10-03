@@ -1,14 +1,14 @@
 /**
- * Pooling the simulated worlds. The consensus is a weighted mean of the
- * worlds' log-odds (a geometric pool of odds), which listens to a world that
- * has all but settled the question more than a plain average does and never
- * lands outside the range the worlds gave. The median and quartiles are
- * reported beside it so worlds that split read as split.
+ * Pooling the simulated worlds. Each world is one equally likely way the
+ * future could go, so the chance of an outcome is the worlds' mixture: the
+ * mean of their figures, with a world where the question settled counting as
+ * certain. (A pool of log-odds, the way forecasters' opinions are combined,
+ * would let one world that settled early outvote the rest.) The median,
+ * quartiles and range are reported beside it so worlds that split read as
+ * split.
  */
 import type { RoundStat } from './types';
 
-const logit = (p: number) => Math.log(p / (1 - p));
-const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 const bound = (p: number) => Math.min(0.99, Math.max(0.01, p));
 
 /** The q-quantile of sorted values, interpolated. */
@@ -20,16 +20,10 @@ export function quantile(sorted: number[], q: number): number {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
-export function pool(views: { probability: number; confidence: number }[]): number {
-  let num = 0;
-  let den = 0;
-  for (const v of views) {
-    // A shrug still counts, a little.
-    const w = weight(v.confidence);
-    num += w * logit(bound(v.probability));
-    den += w;
-  }
-  return den ? sigmoid(num / den) : NaN;
+/** The chance across the worlds: the mean of their figures, each held to [0, 1]. NaN with no worlds. */
+export function mixture(views: { probability: number }[]): number {
+  if (!views.length) return NaN;
+  return views.reduce((t, v) => t + Math.min(1, Math.max(0, v.probability)), 0) / views.length;
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -37,9 +31,9 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const weight = (confidence: number) => 0.25 + Math.min(1, Math.max(0, confidence));
 
 /**
- * Pooled shares for a choice question: a confidence-weighted average of the
- * panel's distributions (a linear pool, which tolerates the zeros a log pool
- * cannot), renormalised.
+ * Pooled shares for a choice question: a weighted average of the worlds'
+ * distributions (a linear pool, the same mixture as a yes/no question's),
+ * renormalised.
  */
 export function poolShares(views: { shares: number[]; confidence: number }[], n: number): number[] {
   const out = new Array(n).fill(0);
@@ -102,7 +96,7 @@ export function roundStat(round: number, views: { probability: number; confidenc
   const p75 = quantile(ps, 0.75);
   return {
     round,
-    consensus: r3(pool(views)),
+    consensus: r3(mixture(views)),
     median: r3(quantile(ps, 0.5)),
     mean: r3(ps.reduce((t, p) => t + p, 0) / (ps.length || 1)),
     p25: r3(p25),

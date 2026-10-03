@@ -62,7 +62,7 @@ export function num(v: unknown, lo: number, hi: number, fallback: number): numbe
 
 /**
  * A probability in [0.01, 0.99]. Reads 0.45, "0.45", 45 and "45%" alike.
- * Never 0 or 1: nothing in the world is certain, and the pooled log-odds need finite values.
+ * Never 0 or 1: a world that has not settled the question is not certain of it; only a resolution is.
  */
 export function prob(v: unknown, fallback: number): number {
   let n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN;

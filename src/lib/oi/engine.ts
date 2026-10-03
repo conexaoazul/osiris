@@ -364,7 +364,8 @@ function questionStart(frame: Frame): string {
  */
 export function pooled(period: number, points: WorldPoint[], kind: Frame['kind'], outcomes: number): RoundStat {
   const stat = roundStatFor(period, points.map(p => ({
-    probability: p.probability,
+    // A world where the question settled counts as certain.
+    probability: p.resolved === 'yes' ? 1 : p.resolved === 'no' ? 0 : p.probability,
     confidence: 0.6,
     shares: p.shares,
     estimate: p.value !== undefined ? { value: p.value, low: p.value, high: p.value } : undefined,

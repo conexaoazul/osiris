@@ -202,8 +202,9 @@ export function EventRow({ s, event, on, onSelect }: { s: RunState; event: SimEv
           {event.date}{surprise && <span style={{ color: T.orange }}>· SURPRISE</span>}{event.place && <span className="truncate">· {event.place}</span>}
           <span className="ml-auto flex-shrink-0"><PushTag c={event} frame={s.frame} /></span>
         </span>
-        <span className="block text-[11.5px] font-medium leading-snug text-[var(--text-heading)]"><Mentions text={event.title} s={s} onSelect={onSelect} /></span>
-        {event.detail && <span className="block mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]"><Mentions text={event.detail} s={s} onSelect={onSelect} /></span>}
+        {/* Plain text: the row is itself a button, so the names in it open from the event's own view. */}
+        <span className="block text-[11.5px] font-medium leading-snug text-[var(--text-heading)]">{event.title}</span>
+        {event.detail && <span className="block mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]">{event.detail}</span>}
       </span>
     </button>
   );

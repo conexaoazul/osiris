@@ -278,14 +278,15 @@ describe('askRun', () => {
 });
 
 describe('pooled', () => {
-  it('counts a world where the question resolved as near-certain', () => {
+  it('weighs the worlds equally, counting one where the question resolved as certain', () => {
     const stat = pooled(2, [
       { world: 'A', period: 2, probability: 0.99, resolved: 'yes', note: '' },
       { world: 'B', period: 2, probability: 0.3, resolved: null, note: '' },
+      { world: 'C', period: 2, probability: 0.2, resolved: null, note: '' },
     ], 'binary', 0);
-    expect(stat.n).toBe(2);
+    expect(stat.n).toBe(3);
     expect(stat.max).toBeCloseTo(0.99, 2);
-    expect(stat.consensus).toBeGreaterThan(0.6);
+    expect(stat.consensus).toBeCloseTo(0.5, 3);
   });
 });
 
