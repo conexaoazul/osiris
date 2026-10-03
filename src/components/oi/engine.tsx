@@ -378,7 +378,7 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
       <div className="flex items-center gap-3 rounded-md border border-[var(--border-secondary)] bg-white/[0.015] px-3 py-2">
         <div className="flex-1 min-w-0">
           <p className="text-[11px] text-[var(--text-primary)]">Research and live intelligence</p>
-          <p className="text-[10px] leading-snug text-[var(--text-muted)]">Search the news and background for the question, with links, plus OSIRIS news, quakes and markets</p>
+          <p className="text-[10px] leading-snug text-[var(--text-muted)]">Reporting from publishers’ feeds with links, market prices, prediction markets and background, plus the OSIRIS feeds where they bear on it</p>
         </div>
         <Switch on={useFeeds} onChange={setUseFeeds} label="Research the question and read the live OSIRIS feeds" />
       </div>
