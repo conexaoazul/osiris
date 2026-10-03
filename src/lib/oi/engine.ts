@@ -279,6 +279,11 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   const pushLog = new Map<string, number[]>();
   const money = (n: number) => priceText(n, pricing?.currency ?? '');
   const priceNow = (w: string) => latest.get(w)?.price?.close ?? pricing?.start ?? 0;
+  /** Where the price went in a world in a period, as its history says it. */
+  const closes = new Map<string, { close: number; high: number; low: number }>();
+  const priceLine = (w: string) => pricing
+    ? (period: number) => { const p = closes.get(`${w}:${period}`); return p ? `${pricing.symbol} ended the period at ${money(p.close)}, trading between ${money(p.low)} and ${money(p.high)}.` : null; }
+    : undefined;
 
   const playWorld = async (w: string, wi: number, period: Period, fresh: string[]) => {
     const last = latest.get(w) ?? null;
@@ -290,12 +295,13 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
       return;
     }
     const mine = events.filter(e => e.world === w);
-    const history = historyBlock(periods, mine, period.index);
+    const history = historyBlock(periods, mine, period.index, priceLine(w));
     const others = movesBlock(moves.filter(m => m.world === w && m.period === period.index - 1), name);
     const temperature = 0.7 + Math.min(wi, 3) * 0.1;
 
+    const level = pricing?.measure.threshold;
     const marketNow = pricing
-      ? `${pricing.symbol} is at ${money(priceNow(w))}${period.index > 1 ? ` (it was ${money(pricing.start)} on ${today})` : ''}.`
+      ? `${pricing.symbol} is at ${money(priceNow(w))}${period.index > 1 ? ` (it was ${money(pricing.start)} on ${today})` : ''}.${level !== undefined ? ` The level the question is about is ${money(level)}, ${level >= priceNow(w) ? '+' : '−'}${Math.round(Math.abs(level / priceNow(w) - 1) * 100)}% from here.` : ''}`
       : undefined;
     const played = await Promise.all(players.map(async actor => {
       s.check();
@@ -379,6 +385,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     const open = priceNow(w);
     const close = pr.start * course.close * after;
     const price = { close, high: Math.max(open, close, pr.start * course.high * after), low: Math.min(open, close, pr.start * course.low * after) };
+    closes.set(`${w}:${period.index}`, price);
     const m = pr.measure;
     if (frame.kind === 'number') return { ...p, value: close, price };
     if (frame.kind !== 'binary' || m.threshold === undefined) return { ...p, price };
@@ -433,7 +440,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   };
   const summaries = worlds.map(w => ({
     world: w,
-    history: historyBlock(periods, events.filter(e => e.world === w), periods.length + 1),
+    history: historyBlock(periods, events.filter(e => e.world === w), periods.length + 1, priceLine(w)),
     outcome: worldOutcome(frame, latest.get(w)),
   }));
   const anchors = anchorsBlock(frame, finalQuant, sources.filter(c => c.kind === 'odds'), lastStat);

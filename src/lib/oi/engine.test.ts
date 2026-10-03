@@ -219,6 +219,11 @@ describe('runEngine', () => {
     // The actors know where the price stands in their world; the world engine knows its own course.
     expect(h.prompts.filter(isMove).every(u => u.includes('THE MARKET IN THIS WORLD: SOL-USD is at'))).toBe(true);
     expect(h.prompts.filter(isStep).every(u => u.includes('On its own course') && u.includes('"price_push"'))).toBe(true);
+    // They know how far the level is, and from the second period on, where the price went in their world.
+    expect(h.prompts.filter(isMove).every(u => /The level the question is about is \$200\.00, [+−]\d+% from here/.test(u))).toBe(true);
+    const later = h.prompts.filter(u => isMove(u) && /PERIOD 2 OF/.test(u));
+    expect(later.length).toBeGreaterThan(0);
+    expect(later.every(u => /- The market: SOL-USD ended the period at \$[\d,.]+, trading between/.test(u))).toBe(true);
     // The report weighs it against the baseline and the market on the same question.
     const report = h.prompts[h.prompts.length - 1];
     expect(report).toContain('WHAT THE PREDICTION RESTS ON');

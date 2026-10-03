@@ -209,13 +209,19 @@ JSON shape:
 
 /* ───────────────────────────── The simulation ───────────────────────────── */
 
-/** What has happened in one world so far, period by period, in dated events. */
-export function historyBlock(periods: Period[], events: SimEvent[], upTo: number): string {
+/**
+ * What has happened in one world so far, period by period, in dated events;
+ * on a price question, each period ends with where the price went in it
+ * (`priced`, a line per period, or null where there is none).
+ */
+export function historyBlock(periods: Period[], events: SimEvent[], upTo: number, priced?: (period: number) => string | null): string {
   const lines: string[] = [];
   for (const p of periods.filter(x => x.index < upTo)) {
     const evs = events.filter(e => e.period === p.index);
-    lines.push(`Period ${p.index} (${p.label}):${evs.length ? '' : ' nothing of note'}`);
+    const price = priced?.(p.index) ?? null;
+    lines.push(`Period ${p.index} (${p.label}):${evs.length || price ? '' : ' nothing of note'}`);
     for (const e of evs) lines.push(`- ${e.date}: ${e.title}${e.kind === 'shock' ? ' [surprise]' : e.kind === 'injected' ? ' [injected]' : ''}. ${e.detail}`);
+    if (price) lines.push(`- The market: ${price}`);
   }
   return lines.join('\n') || '(nothing yet: the simulation starts today, in the world as the sources describe it)';
 }
