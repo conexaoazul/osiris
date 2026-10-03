@@ -4,7 +4,7 @@
  */
 import { answerText } from './forecast';
 import type {
-  Actor, ContextItem, Depth, Frame, Link, Move, Period, Phase, Report, RoundStat, RunStatus, SimEvent, Stamped, Usage, WorldPoint,
+  Actor, ContextItem, Depth, Frame, Link, Move, Period, Phase, Quant, Report, RoundStat, RunStatus, SimEvent, Stamped, Usage, WorldPoint,
 } from './types';
 
 export interface RunState {
@@ -21,6 +21,8 @@ export interface RunState {
   phaseLabel: string;
   context: ContextItem[];
   frame: Frame | null;
+  /** A price question's statistical baseline, once the world model has named the price. */
+  quant: Quant | null;
   /** Everyone in the world model; those cast to play carry a persona. */
   actors: Actor[];
   links: Link[];
@@ -64,6 +66,7 @@ export function initialState(): RunState {
     phaseLabel: '',
     context: [],
     frame: null,
+    quant: null,
     actors: [],
     links: [],
     periods: [],
@@ -111,6 +114,9 @@ export function applyEvent(s: RunState, e: Stamped): RunState {
       break;
     case 'frame':
       n.frame = e.frame;
+      break;
+    case 'quant':
+      n.quant = e.quant;
       break;
     case 'actor':
       n.actors = [...s.actors, e.actor];

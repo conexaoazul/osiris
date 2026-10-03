@@ -72,7 +72,7 @@ const opening = (t: string, words = 9) => t.split(/\s+/).slice(0, words).join(' 
 
 /** The sources a prompt lists, by id, with the words each says: its excerpt where it has one, else its headline. */
 function feedSources(u: string): { id: string; says: string }[] {
-  return [...u.matchAll(/^\[([cdwb]\d+)\] (.*)$(?:\n {4}"(.*)")?/gm)].map(m => {
+  return [...u.matchAll(/^\[([cdwbqm]\d+)\] (.*)$(?:\n {4}"(.*)")?/gm)].map(m => {
     const rest = m[2];
     const quoted = /— "(.*)"$/.exec(rest);
     return { id: m[1], says: m[3] || (quoted ? quoted[1] : rest.split(' — ').slice(1).join(' — ')) };
@@ -88,14 +88,25 @@ function answer(req: ChatRequest): string {
     return JSON.stringify(planFallback(question));
   }
   if (u.includes('Build the world model')) {
-    const cites = [...u.matchAll(/^\[([cwb]\d+)\]/gm)].map(m => m[1]).slice(0, 5);
+    const cites = [...u.matchAll(/^\[([cwbqm]\d+)\]/gm)].map(m => m[1]).slice(0, 5);
     const question = (u.match(/QUESTION: (.*)/)?.[1] ?? 'The event happens').trim();
     // Passages of the asker's data, copied as they are: its longer lines, headings left out.
     const seed = /SEED \(material[^\n]*\n<<<\n([\s\S]*?)\n>>>/.exec(u)?.[1] ?? '';
     const passages = seed === '(none)' ? [] : seed.split('\n').map(l => l.trim()).filter(l => l.length >= 20 && !l.startsWith('###')).slice(0, 3).map(l => opening(l, 24));
     const kind = kindOf(question);
+    // A price in the market data: the question turns on it; a level in the question ("$200", "200$") is what it is about.
+    const priced = /^\[q\d+\] market data[^—]*— .*\(([A-Za-z0-9^=.-]+)\): [^\d]*([\d,.]+)/m.exec(u);
+    const level = parseFloat((/\$\s?([\d,.]+)|([\d,.]+)\s?\$/.exec(question)?.slice(1).find(Boolean) ?? '').replace(/,/g, ''));
+    const price = priced ? parseFloat(priced[2].replace(/,/g, '')) : NaN;
+    const measure = priced ? {
+      symbol: priced[1],
+      ...(kind === 'binary' ? { threshold: Number.isFinite(level) ? level : Math.round(price * 1.25), direction: /\b(fall|drop|below|under|crash)\b/i.test(question) ? 'below' : 'above', touch: true } : {}),
+    } : null;
+    const market = /^\[(m\d+)\]/m.exec(u)?.[1] ?? null;
     return JSON.stringify({
       kind,
+      measure,
+      market,
       ...(kind === 'choice' ? { outcomes: DEMO_OUTCOMES, prior: [0.4, 0.3, 0.2, 0.1] } : {}),
       ...(kind === 'number' ? { unit: 'USD per barrel', anchor: 84.2 } : {}),
       proposition: question,
@@ -135,7 +146,7 @@ function answer(req: ChatRequest): string {
     const stance = target ? (['cooperate', 'pressure', 'oppose'] as const)[Math.floor(hash(seed + 's') * 3)] : 'hold';
     // Quote a source when grounding is asked for, preferring the research and the asker's data.
     const listed = u.includes('"cites"') ? feedSources(u) : [];
-    const preferred = listed.filter(x => /^[wbd]/.test(x.id));
+    const preferred = listed.filter(x => /^[wqmbd]/.test(x.id));
     const pool = preferred.length ? preferred : listed;
     const src = pool[Math.floor(hash(seed + 'c') * pool.length)];
     const first = /^OUTCOMES: 1\. (.+?)(?:  2\.|$)/m.exec(u)?.[1]?.trim();
@@ -183,14 +194,16 @@ function answer(req: ChatRequest): string {
       : kind === 'number'
         ? { value: Math.round((figure(u, 'ANCHOR') ?? 80) * (1 + drift * 0.3) * 10) / 10 }
         : { resolved: last && world === 'B' && p > 0.45 ? 'yes' : last && p < 0.2 ? 'no' : null, probability: Math.round(p * 100) / 100 };
-    return JSON.stringify({ events, state: { ...state, note: up ? 'Momentum builds, slowly.' : 'Positions harden.' } });
+    // A price in play: the events push it a little beyond its own course, up or down.
+    const push = u.includes('THE MARKET IN THIS WORLD') ? { price_push: Math.round((hash(seed + 'p') - 0.5) * 0.12 * 1000) / 1000 } : {};
+    return JSON.stringify({ events, state: { ...state, note: up ? 'Momentum builds, slowly.' : 'Positions harden.' }, ...push });
   }
   if (u.includes('You are the OSIRIS report agent') && u.includes('JSON shape')) {
     const swarm = Number(u.match(/The worlds pooled give (\d+)%/)?.[1] ?? 35) / 100;
     const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
     const median = parseFloat(u.match(/median is ([-0-9.,]+)/)?.[1]?.replace(/,/g, '') ?? '');
     const listedIds = feedSources(u).map(x => x.id);
-    const ids = listedIds.filter(id => /^[wbd]/.test(id)).length ? listedIds.filter(id => /^[wbd]/.test(id)) : listedIds;
+    const ids = listedIds.filter(id => /^[wqmbd]/.test(id)).length ? listedIds.filter(id => /^[wqmbd]/.test(id)) : listedIds;
     const sourced = (k: number) => (ids.length ? { sources: [ids[k % ids.length], ids[(k + 2) % ids.length]].filter((v, i, a) => a.indexOf(v) === i) } : {});
     // The path: the first world's events, as the most likely course.
     const firstWorld = /WORLD A: [^\n]*\n([\s\S]*?)(?:\n\nWORLD |\n\nTHE WORLDS POOLED)/.exec(u)?.[1] ?? '';

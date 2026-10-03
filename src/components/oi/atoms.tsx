@@ -6,8 +6,8 @@
 import { createElement, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Activity, BookOpen, Building2, CalendarClock, CandlestickChart, Crown, Database, Factory, FileText, GitBranch, Globe2, Landmark, Link2,
-  MapPin, Newspaper, Orbit, Quote, ScrollText, Signpost, Swords, TrendingUp, Users, Zap, type LucideIcon, type LucideProps,
+  Activity, BookOpen, Building2, CalendarClock, CandlestickChart, ChartLine, Crown, Database, Factory, FileText, GitBranch, Globe2, Landmark, Link2,
+  MapPin, MessageCircle, Newspaper, Orbit, Quote, Scale, ScrollText, Signpost, Swords, TrendingUp, Users, Zap, type LucideIcon, type LucideProps,
 } from 'lucide-react';
 import { leader, outcomeColor, pointView } from '@/lib/oi/forecast';
 import { mentions } from '@/lib/oi/objects';
@@ -148,7 +148,9 @@ export function StanceTag({ stance }: { stance: Move['stance'] }) {
 const ACTOR_ICON: Record<string, LucideIcon> = {
   state: Landmark, leader: Crown, organisation: Building2, company: Factory, market: TrendingUp, group: Users, place: MapPin,
 };
-const SOURCE_ICON: Record<string, LucideIcon> = { news: Newspaper, quake: Activity, market: CandlestickChart, data: Database, web: Globe2, wiki: BookOpen };
+const SOURCE_ICON: Record<string, LucideIcon> = {
+  news: Newspaper, social: MessageCircle, quake: Activity, market: CandlestickChart, series: ChartLine, odds: Scale, data: Database, web: Globe2, wiki: BookOpen,
+};
 export const LINK_ICON: Record<LinkKind, LucideIcon> = { relation: Link2, evidence: FileText, move: Swords, cite: Quote };
 
 /** The icon for an object, from its research key's prefix and its subtype. */

@@ -64,18 +64,75 @@ export interface Frame {
   /** The reference class or reading behind the prior. */
   baseRateReason: string;
   focus: Located | null;
+  /** The market price the question turns on, when it turns on one: the simulation then prices it in every world. */
+  measure?: Measure | null;
+  /** The id of the prediction market (an `odds` source) that asks this same question, when one does. */
+  market?: string | null;
+}
+
+/**
+ * A price the markets set every day that a question turns on: a coin, a
+ * share, an index, a commodity, a currency, a yield.
+ */
+export interface Measure {
+  /** The market's ticker, as Yahoo Finance writes it: "SOL-USD", "^GSPC", "BZ=F", "EURUSD=X". */
+  symbol: string;
+  /** binary: the level the proposition is about. */
+  threshold?: number;
+  /** binary: YES at or above the level, or at or below it. */
+  direction?: 'above' | 'below';
+  /** binary: YES the first time it trades there (true), or only if that is where it stands at the horizon (false). */
+  touch?: boolean;
+}
+
+/** The statistical baseline for a price question: what the instrument's own history says, before any actor moves. */
+export interface Quant {
+  symbol: string;
+  name: string;
+  currency: string;
+  /** The last close, and its date. */
+  price: number;
+  asOf: string;
+  /** Annualised volatility. */
+  vol: number;
+  /** Calendar days from today to the horizon. */
+  days: number;
+  /** binary: the share of resampled paths that meet the level. */
+  probability?: number;
+  /** The price at the horizon: 10th, 50th and 90th percentile of the paths. */
+  p10: number;
+  p50: number;
+  p90: number;
+  /** How it was worked out, in a sentence. */
+  method: string;
+}
+
+/** What a prediction market prices a question at: real money on the outcome. */
+export interface Odds {
+  platform: 'Polymarket' | 'Manifold';
+  /** The market's own question. */
+  question: string;
+  /** The price of YES, 0..1. */
+  probability: number;
+  /** Traded volume, in USD (Polymarket) or mana (Manifold). */
+  volume: number;
+  /** When the market closes, ISO, or ''. */
+  closes: string;
 }
 
 /**
  * A source the run was given, by id:
- *   c…  the live OSIRIS feeds: a headline (`news`), a quake, the markets
  *   w…  the research: a news article found for the question (`web`)
+ *   q…  market data for a price the question turns on (`series`)
+ *   m…  a prediction market's price on the question (`odds`)
  *   b…  background from Wikipedia (`wiki`)
+ *   c…  the live OSIRIS feeds: a headline (`news`), a post on a social
+ *       network (`social`), a quake, the market board (`market`)
  *   d…  a passage of the asker's own data, or `data` for all of it (`data`)
  */
 export interface ContextItem extends Located {
   id: string;
-  kind: 'news' | 'quake' | 'market' | 'data' | 'web' | 'wiki';
+  kind: 'news' | 'social' | 'quake' | 'market' | 'series' | 'odds' | 'data' | 'web' | 'wiki';
   title: string;
   /** The outlet, site or file it came from. */
   source: string;
@@ -85,6 +142,10 @@ export interface ContextItem extends Located {
   url?: string;
   /** What it says that bears on the question, as the actors read it. */
   excerpt?: string;
+  /** `odds`: the market's price. */
+  odds?: Odds;
+  /** `series`: the ticker, as Yahoo Finance writes it. */
+  symbol?: string;
 }
 
 export type ActorKind = 'state' | 'leader' | 'organisation' | 'company' | 'market' | 'group' | 'place';
@@ -173,6 +234,8 @@ export interface WorldPoint {
   shares?: number[];
   /** number: the quantity's value now, in this world. */
   value?: number;
+  /** A price question: the price in this world at the end of the period, and its highest and lowest in it. */
+  price?: { close: number; high: number; low: number };
   /** The question has resolved in this world: 'yes', 'no', or the winning outcome. */
   resolved: string | null;
   /** Where things stand, in a line. */
@@ -319,6 +382,7 @@ export type OiEvent =
   | { t: 'phase'; phase: Phase; label: string }
   | { t: 'context'; items: ContextItem[] }
   | { t: 'frame'; frame: Frame }
+  | { t: 'quant'; quant: Quant }
   | { t: 'actor'; actor: Actor }
   | { t: 'link'; link: Link }
   | { t: 'cast'; actor: string; persona: Persona }

@@ -2,11 +2,14 @@
  * The live world a run starts from: OSIRIS's own news feed, the day's large
  * earthquakes and a line of market prices, cut down to what bears on the
  * question. Read in-process from the same cached sources the map uses, so a
- * run adds no upstream traffic of its own.
+ * run adds no upstream traffic of its own. The feed carries posts from public
+ * Telegram channels beside the wire services: those are kept as what they
+ * are, posts on a social network (`social`), never passed off as reporting.
  */
 import type { ContextItem } from './types';
 import { text } from './parse';
 import { hit, terms } from './words';
+import { isSocial } from './newsroom';
 
 export { terms };
 
@@ -81,7 +84,7 @@ function newsItem(n: RawNews, id: string): ContextItem {
   const url = httpUrl(n.link ?? n.url);
   return {
     id,
-    kind: 'news',
+    kind: url && isSocial(url) ? 'social' : 'news',
     title,
     source: text(n.source_name || n.source, 60),
     published: typeof n.published === 'string' ? n.published : '',
@@ -109,19 +112,9 @@ export function selectContext(
   const scored = recent
     .map(n => ({ n, s: scoreNews(n, q), t: Date.parse(n.published || '') || 0 }))
     .sort((a, b) => b.s - a.s || b.t - a.t);
-  const relevant = scored.filter(x => x.s >= 3);
-  const picked = relevant.slice(0, limit - 1).map(x => x.n);
-
-  // Almost nothing on topic: add a few of the biggest stories of the moment, so the actors still see
-  // the world. Only a few: the research brings the coverage of the question itself, and a headline
-  // that has nothing to do with it is no evidence for anything.
-  if (picked.length < 3) {
-    const general = recent
-      .filter(n => !picked.includes(n))
-      .sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0) || Date.parse(b.published || '') - Date.parse(a.published || ''))
-      .slice(0, Math.min(limit - 1, 4) - picked.length);
-    picked.push(...general);
-  }
+  // Only the stories about the question: one about something else is no evidence for anything,
+  // and the research brings the coverage of the question itself.
+  const picked = scored.filter(x => x.s >= 3).slice(0, limit - 1).map(x => x.n);
 
   const items: ContextItem[] = picked.map((n, i) => newsItem(n, `c${i + 1}`));
 

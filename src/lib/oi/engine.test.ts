@@ -4,6 +4,8 @@ import { PANEL_SEED_MAX, SEED_MAX, seedCost, simulationCalls } from './depths';
 import { createDemoChat } from './demo';
 import { ProviderError, type ChatFn } from './providers';
 import { applyEvent, castOf, initialState, type RunState } from './state';
+import { seriesItem } from './web';
+import type { Series } from './quant';
 import type { ContextItem, OiEvent } from './types';
 
 /** What the research finds: articles with their links and what they say, and background. */
@@ -29,7 +31,7 @@ function harness(chat: ChatFn, injects: string[][] = []) {
     signal: new AbortController().signal,
     takeInjects: () => injects.shift() ?? [],
     gather: async () => CONTEXT,
-    research: async () => WEB,
+    research: async () => ({ items: WEB, series: [] }),
     today: '2026-10-02',
   };
   return { events, prompts, deps };
@@ -51,7 +53,8 @@ describe('runEngine', () => {
 
     const phases = h.events.filter(e => e.t === 'phase').map(e => (e as { phase: string }).phase);
     expect(phases).toEqual(['context', 'graph', 'agents', ...Array(d.periods).fill('simulate'), 'report']);
-    expect(s.context.map(c => c.id)).toEqual(['w1', 'w2', 'b1', 'c1', 'c2']);
+    // The live feed's headline about something else (export controls) is no evidence for this question.
+    expect(s.context.map(c => c.id)).toEqual(['w1', 'w2', 'b1', 'c1']);
 
     // The clock: dated periods from today to the horizon, end to end, and the worlds that run on it.
     expect(s.periods).toHaveLength(d.periods);
@@ -164,13 +167,63 @@ describe('runEngine', () => {
     expect(fold(h.events).usage.calls).toBe(estimateCalls('quick', false));
   });
 
-  it('leaves out the feed headlines about something else once the research has found coverage', async () => {
+  it('leaves out the feed headlines about something else, and the market board on a question that is not about markets', async () => {
     const h = harness(createDemoChat());
-    const covered = [...WEB, { ...WEB[0], id: 'w3', title: 'Envoys to sign within weeks, hosts say', url: 'https://wire.example/sign' }];
-    h.deps.research = async () => covered.map(c => ({ ...c, kind: c.id.startsWith('b') ? 'wiki' as const : 'web' as const }));
+    h.deps.gather = async () => [...CONTEXT, { id: 'c3', kind: 'market', title: 'Markets now: S&P 500 7,777', source: 'OSIRIS Markets', published: '', place: '', lat: null, lng: null }];
     await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: true }, h.deps);
     const ids = fold(h.events).context.map(c => `${c.id}:${c.title}`);
     expect(ids.filter(x => x.startsWith('c'))).toEqual(['c1:Envoys due in Geneva']);
+  });
+
+  it('prices a question about a price: a baseline from its history, a course for the price in every world, and the price settles it', async () => {
+    // Two years of a coin swinging about 4% a day around 120.
+    const dates: string[] = [], closes: number[] = [];
+    let p = 120;
+    for (let i = 0; i < 730; i++) {
+      dates.push(new Date(Date.UTC(2024, 9, 2) + i * 86_400_000).toISOString().slice(0, 10));
+      closes.push(p);
+      p *= [1.04, 0.96, 1.05, 0.955, 1.02, 0.98][i % 6];
+    }
+    const coin: Series = { symbol: 'SOL-USD', name: 'Solana USD', currency: 'USD', dates, closes };
+    const odds: ContextItem = {
+      id: 'm1', kind: 'odds', title: 'Will Solana reach $200 by December 31, 2026?', source: 'Polymarket', published: '', place: '', lat: null, lng: null,
+      url: 'https://polymarket.com/event/x', excerpt: 'Polymarket traders price YES at 9.5% ($2.1M traded).', odds: { platform: 'Polymarket', question: 'q', probability: 0.095, volume: 2_100_000, closes: '' },
+    };
+    const h = harness(createDemoChat());
+    h.deps.research = async () => ({ items: [WEB[0], seriesItem(coin, 'q1')!, odds], series: [coin] });
+    await runEngine({ question: 'Will Solana reach $200 before the end of 2026?', seed: '', depth: 'quick', useFeeds: true }, h.deps);
+    const s = fold(h.events);
+
+    // The world model named the price and the market on the same question; the baseline replaced the base rate.
+    expect(s.frame?.measure).toEqual({ symbol: 'SOL-USD', threshold: 200, direction: 'above', touch: true });
+    expect(s.frame?.market).toBe('m1');
+    expect(s.quant).toMatchObject({ symbol: 'SOL-USD', price: closes[729] });
+    expect(s.frame?.baseRate).toBeCloseTo(Math.min(0.99, Math.max(0.01, s.quant!.probability!)), 6);
+    expect(s.context.find(c => c.id === 'q1')?.excerpt).toMatch(/Statistical baseline to 2026-12-31: 4,000 paths/);
+
+    // Only actors that can act are cast: the bond market is the world, not a player.
+    expect(castOf(s).map(a => a.kind)).not.toContain('market');
+
+    // Every world has a price every period, and a world is settled exactly when its price reaches the level.
+    for (const p of s.points) {
+      expect(p.price!.low).toBeLessThanOrEqual(p.price!.close);
+      expect(p.price!.high).toBeGreaterThanOrEqual(p.price!.close);
+    }
+    for (const w of s.worlds) {
+      const pts = s.points.filter(p => p.world === w);
+      const hit = pts.findIndex(p => p.price!.high >= 200);
+      const settled = pts.findIndex(p => p.resolved === 'yes');
+      expect(settled).toBe(hit);
+      if (hit < 0) expect(pts[pts.length - 1].resolved).toBe('no');
+    }
+    // The actors know where the price stands in their world; the world engine knows its own course.
+    expect(h.prompts.filter(isMove).every(u => u.includes('THE MARKET IN THIS WORLD: SOL-USD is at'))).toBe(true);
+    expect(h.prompts.filter(isStep).every(u => u.includes('On its own course') && u.includes('"price_push"'))).toBe(true);
+    // The report weighs it against the baseline and the market on the same question.
+    const report = h.prompts[h.prompts.length - 1];
+    expect(report).toContain('WHAT THE PREDICTION RESTS ON');
+    expect(report).toContain('Statistical baseline (SOL-USD');
+    expect(report).toContain('[m1] Prediction market on THIS question');
   });
 
   it('lands an injected event in every world from the next period on, and in the report', async () => {

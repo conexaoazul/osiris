@@ -17,8 +17,9 @@
  * models have no tools, so the most a hostile headline can do is argue.
  */
 import { formatAmount } from './forecast';
+import { priceText } from './quant';
 import { DATA_ID, evidenceLedger, type LedgerRow } from './sources';
-import type { Actor, ContextItem, Frame, Link, Move, Period, Report, RoundStat, SimEvent, WorldPoint } from './types';
+import type { Actor, ContextItem, Frame, Link, Move, Period, Quant, Report, RoundStat, SimEvent, WorldPoint } from './types';
 
 export const SYSTEM = [
   'You are part of OSIRIS OI, a prediction engine that rehearses the future: the actors who decide an outcome act it out in simulated worlds, period by period, from today to the horizon.',
@@ -29,19 +30,28 @@ export const SYSTEM = [
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 
+/** What kind of source an item is, as every prompt names it. */
+function sourceLabel(c: ContextItem): string {
+  if (c.kind === 'series') return `market data, ${c.source}`;
+  if (c.kind === 'odds') return `${c.source} prediction market`;
+  if (c.kind === 'social') return `${c.source}, a social-media post (an unverified claim, not reporting)`;
+  return c.source;
+}
+
 /**
  * The sources, one per line by id, each with what it says where there is
- * more than a headline: the research's articles (w), background (b), the
- * live feeds (c) and passages of the asker's data (d).
+ * more than a headline: the research's articles (w), market data (q),
+ * prediction markets (m), background (b), the live feeds (c) and passages
+ * of the asker's data (d).
  */
 export function feedBlock(items: ContextItem[]): string {
   const shown = items.filter(c => c.id !== DATA_ID);
   if (!shown.length) return '(no sources for this run)';
   return shown.map(c => {
     if (c.kind === 'data') return `[${c.id}] ${c.source} — "${c.title}"`;
-    const when = c.published ? c.published.slice(0, 16).replace('T', ' ') : '';
+    const when = c.published && c.kind !== 'series' ? c.published.slice(0, 16).replace('T', ' ') : '';
     const where = c.place && c.kind !== 'web' ? ` · ${c.place}` : '';
-    const head = `[${c.id}] ${[when, `${c.source}${where}`].filter(Boolean).join(' · ')} — ${c.title}`;
+    const head = `[${c.id}] ${[when, `${sourceLabel(c)}${where}`].filter(Boolean).join(' · ')} — ${c.title}`;
     return c.excerpt ? `${head}\n    "${c.excerpt}"` : head;
   }).join('\n');
 }
@@ -58,11 +68,14 @@ ${head}
 >>>
 ` : ''}
 Plan the research for this forecast.
-- "news": 2 news searches that would find the most recent reporting on what decides this question. Each is 2 to 4 keywords: names and key terms only, no punctuation or operators.
+- "news": 2 news searches that would find the most recent reporting on what decides this question. Each is 2 to 4 keywords: names and key terms only, no punctuation or operators. Start each with the name the reporting would carry (the asset, the country, the person, the company).
+- "desks": the newsroom desks that cover it, 1 to 3 of: world, politics, business, markets, crypto, tech, energy, defense, health, science, climate, sports.
+- "instruments": if the question turns on a price that markets set every day (a coin, a share, an index, a commodity, a currency, a bond yield), its ticker as Yahoo Finance writes it, e.g. "BTC-USD", "SOL-USD", "NVDA", "^GSPC", "BZ=F", "GC=F", "EURUSD=X", "^TNX"; at most 2. Otherwise [].
+- "markets": 1 or 2 short searches (2 to 4 words) that would find prediction markets (Polymarket, Manifold) on this same question.
 - "background": 1 or 2 Wikipedia article titles that give the background or the base rate (the institution, the conflict, the market, the recurring event).
 
 JSON shape:
-{"news": ["…", "…"], "background": ["…"]}`;
+{"news": ["…", "…"], "desks": ["…"], "instruments": [], "markets": ["…"], "background": ["…"]}`;
 }
 
 /** How an actor or the report cites: by id, the words copied exactly, so a reader can follow every quote to its source. */
@@ -92,7 +105,7 @@ SEED (material supplied by the user, may be empty):
 ${seed.trim() || '(none)'}
 >>>
 
-SOURCES (news found for this question as w…, background as b…, the live OSIRIS feeds as c…; cite by id):
+SOURCES (news reporting as w…, market data as q…, prediction markets as m…, background as b…, the live OSIRIS feeds as c…; cite by id):
 <<<
 ${feedBlock(items)}
 >>>
@@ -103,11 +116,13 @@ Build the world model for this forecast.
    - "choice": which of a few named outcomes happens (who wins, which option, which way it goes). List 2 to 6 mutually exclusive outcomes that cover the realistic space; add "Other" only when the named ones leave real probability uncovered.
    - "number": how much or how many (a price, a level, a count, a rate, a share). Give the unit.
 2. Pin the question down: for binary, one proposition that will clearly resolve YES or NO; for choice and number, the exact question. Give a horizon date (the simulation runs from today to it) and how a reader will judge the result.
-3. Start from the outside view: for binary, a base rate from reference classes; for choice, a prior share for each outcome; for number, the current or reference value as an anchor. Say what it rests on.
-4. Name 6 to 12 actors that will shape the outcome: states, leaders, organisations, companies, markets, armed or civic groups, places. The ones that decide will be played as agents in a simulation, so name real, specific actors. Put each on Earth (capital, headquarters, or where they act) with decimal lat/lng and an ISO 3166 country code.
+3. Start from the outside view: for binary, a base rate from reference classes; for choice, a prior share for each outcome; for number, the current or reference value as an anchor. Say what it rests on. For a level of a market price, the market data (q…) says where the price is and how far it habitually swings: how far the level is from today's price, measured in those swings, is the outside view. A prediction market (m…) on the same question is the crowd's view: weigh it.
+4. Name 6 to 12 actors that will shape the outcome: states, leaders, organisations, companies, armed or civic groups. The ones that decide will be played as agents in a simulation, so name real, specific actors that can decide and act. A market, a price, an index or "the economy" is not an actor: it is the world the actors move, and the simulation prices it. Put each on Earth (capital, headquarters, or where they act) with decimal lat/lng and an ISO 3166 country code.
 5. Map 8 to 20 relations between those actors.
-6. Cite the sources that bear on the outcome, by id.${hasSeed ? `
-7. Quote up to 8 passages from SEED that bear on the outcome, each copied word for word (at most 240 characters). They are numbered d1, d2… in your order; the actors will quote them, and your evidence can cite them.` : ''}
+6. Cite the sources that bear on the outcome, by id.
+7. "measure": if the question turns on a price in the market data (q…), its symbol; for a yes/no question also the level, which side of it means YES ("above" or "below"), and "touch": true if trading there once before the horizon is enough, false if it must stand there at the horizon. Otherwise null.
+8. "market": if a prediction market (m…) asks this same question (the same event, the same level, a deadline within days of this one), its id; otherwise null.${hasSeed ? `
+9. Quote up to 8 passages from SEED that bear on the outcome, each copied word for word (at most 240 characters). They are numbered d1, d2… in your order; the actors will quote them, and your evidence can cite them.` : ''}
 
 JSON shape:
 {
@@ -118,7 +133,9 @@ JSON shape:
   "base_rate": 0.0-1.0 (binary only), "prior": [shares in the order of outcomes, summing to 1] (choice only), "anchor": number (number only),
   "base_rate_reason": "the reference class or reading, and why",
   "focus": {"place": "…", "lat": 0, "lng": 0},
-  "actors": [{"id": "short_snake_case", "name": "…", "kind": "state|leader|organisation|company|market|group|place", "country": "US", "place": "…", "lat": 0, "lng": 0, "role": "why they matter, one line", "lean": -1.0-1.0 (pushes toward NO or lower … YES or higher; 0 for a choice question)}],
+  "measure": {"symbol": "SOL-USD", "threshold": 0, "direction": "above|below", "touch": true} or null,
+  "market": "m1" or null,
+  "actors": [{"id": "short_snake_case", "name": "…", "kind": "state|leader|organisation|company|group", "country": "US", "place": "…", "lat": 0, "lng": 0, "role": "why they matter, one line", "lean": -1.0-1.0 (pushes toward NO or lower … YES or higher; 0 for a choice question)}],
   "relations": [{"from": "actor_id", "to": "actor_id", "kind": "alliance|rivalry|conflict|trade|supply|influence|dependency|negotiation|sanctions", "strength": 0.0-1.0, "note": "one line"}],
   "evidence": [{"source": "${hasSeed ? 'w1, b1, c1 or d1' : 'w1, b1 or c1'}", "actor": "actor_id", "effect": "yes|no|neutral" (yes = toward YES or higher), "note": "one line"}]${hasSeed ? `,
   "quotes": [{"text": "a passage copied exactly from SEED", "note": "why it matters, one line"}]` : ''}
@@ -180,9 +197,9 @@ ${brief}
 
 ${clockLine(periods)}
 
-Cast the ${count} actors whose decisions will most shape the outcome, chosen from ACTORS above by id. Each will be played as an agent acting in its own interest, period by period, against the others. Prefer actors who can act (decide, sign, veto, vote, sanction, strike, set prices, negotiate) over those who only comment. For each give:
+Cast the ${count} actors whose decisions will most shape the outcome, chosen from ACTORS above by id. Each will be played as an agent acting in its own interest, period by period, against the others. Cast only actors that can decide and act (decide, sign, veto, vote, sanction, strike, invest, list, regulate, negotiate), never a market, a price, an index or a place: those are the world the actors move. For each give:
 - goal: what it actually wants out of this, in its own terms
-- levers: 2 to 4 concrete things it can really do within this time
+- levers: 2 to 4 concrete things it can really do within this time, at its real scale and within its real powers
 - red_lines: what it will not accept
 - style: how it decides (cautious, opportunistic, bound by procedure, driven by domestic politics…), one line
 
@@ -236,6 +253,8 @@ export interface MoveInput {
   injects: string[];
   /** There are sources to quote. */
   citable: boolean;
+  /** A price question: where the price stands in this world, in a line. */
+  market?: string;
   today: string;
 }
 
@@ -248,8 +267,8 @@ export function movePrompt(i: MoveInput): string {
   const first = i.period.index === 1;
   const cite = i.citable
     ? first
-      ? `\nGround your first move in the real world: quote 1 or 2 sources that shape it (${ids}). ${CITE_RULE} A first move without a quote is sent back.`
-      : `\nIf a source still shapes your decision, quote it (${ids}). ${CITE_RULE}`
+      ? `\nGround your first move in the real world: quote 1 or 2 sources that shape it (${ids}). Quote what decides the move (a reported fact, a figure, a statement, a price, the odds), never a general description of who you are or what something is. ${CITE_RULE} A first move without a quote is sent back.`
+      : `\nIf a source still shapes your decision, quote what in it decides the move (${ids}). ${CITE_RULE}`
     : '';
   const injects = i.injects.length ? `\nBREAKING (it has just happened; it is real in this world):\n${i.injects.map(t => `- ${t}`).join('\n')}\n` : '';
   return `TODAY (the real date): ${i.today} (UTC)
@@ -273,11 +292,11 @@ ${i.evidence}
 ${dataBlock(i.data)}
 WHAT HAS HAPPENED IN THIS WORLD SO FAR:
 ${i.history}
-
+${i.market ? `\nTHE MARKET IN THIS WORLD: ${i.market}\n` : ''}
 WHAT THE OTHERS DID LAST PERIOD:
 ${i.others}
 ${injects}
-Decide your move for this period (${i.period.start} to ${i.period.end}): the one concrete thing you would really do now, within your levers and red lines, given what has happened. Waiting is a move when it is what you would really do. Say what you announce in public, if anything, which actors your move is aimed at, your stance toward them, and ${effect.words}.${cite}
+Decide your move for this period (${i.period.start} to ${i.period.end}): the one concrete thing you would really do now, within your levers and red lines, given what has happened. Act at your real scale and within your real powers, the way your record says you act: no secret coordination with others, no moving a price at will, nothing you could not really do in this time. Waiting is a move when it is what you would really do. Say what you announce in public, if anything, which actors your move is aimed at, your stance toward them, and ${effect.words}.${cite}
 
 JSON shape:
 {"action": "what you do, concretely, at most 200 characters", "statement": "what you say in public, or empty", "targets": ["actor_id"], "stance": "cooperate|pressure|oppose|hold", ${effect.field}, "why": "your private reasoning, one line"${i.citable ? ', "cites": [{"source": "w2", "quote": "words copied exactly from that source, at most 200 characters", "effect": "yes|no|neutral", "why": "how it shapes your move, at most 120 characters"}]' : ''}}`;
@@ -303,6 +322,12 @@ export interface StepInput {
   standing: string;
   moves: string;
   injects: string[];
+  /**
+   * A price question: the price in this world, its own course this period,
+   * and whether the price decides where the question stands (a level, or a
+   * value at the horizon), in which case the world engine does not.
+   */
+  market?: { line: string; decides: boolean };
   today: string;
 }
 
@@ -332,7 +357,13 @@ function standingAsk(frame: Frame, last: boolean): { ask: string; fields: string
 /** The world engine's step: what actually happens in one period of one world, and where the question then stands. */
 export function stepPrompt(i: StepInput): string {
   const last = i.period.index === i.periods;
-  const { ask, fields } = standingAsk(i.frame, last);
+  const { ask, fields } = i.market?.decides
+    ? { ask: 'The price decides where the question stands, so do not judge that yourself: say in a line where things stand.', fields: '' }
+    : standingAsk(i.frame, last);
+  const market = i.market ? `\nTHE MARKET IN THIS WORLD: ${i.market.line}\n` : '';
+  const pushAsk = i.market
+    ? `\n4. The price: if this period's events would move it beyond its own course (news that changes what it is worth: a ruling, a listing, a hack, a deal, a shock), give "price_push", the extra move as a fraction (0.05 = 5% higher than its own course, −0.05 = 5% lower); 0 if they would not. Be realistic: ordinary news moves a price a few percent; only news of real weight 15 to 30%; never more.`
+    : '';
   const injects = i.injects.length
     ? `\nEVENTS INJECTED BY THE OPERATOR (they happen in this period, as stated, and the world reacts):\n${i.injects.map(t => `- ${t}`).join('\n')}\n`
     : '';
@@ -351,15 +382,15 @@ WHERE THE QUESTION STOOD: ${i.standing}
 
 THE ACTORS' MOVES THIS PERIOD (made at the same time, each without knowing the others'):
 ${i.moves}
-${injects}
+${injects}${market}
 Decide what actually happens in this period.
 1. Give 1 to 4 events, dated within the period, that follow from the moves and how they collide: what works, what fails, what is delayed, who reacts and how. Be realistic about time: talks take rounds, laws take readings and votes, deals slip, markets move on news. Place each event on Earth.
 2. Add a surprise from outside the actors' control (kind "shock") only if this world calls for it, and only one.
-3. Then say where the question stands at the end of the period. ${ask}
+3. Then say where the question stands at the end of the period. ${ask}${pushAsk}
 For each event, say ${effect.words}.
 
 JSON shape:
-{"events": [{"date": "YYYY-MM-DD", "title": "what happened, at most 100 characters", "detail": "one or two sentences", "actors": ["actor_id"], ${effect.field}, "kind": "event|shock", "place": "…", "lat": 0, "lng": 0}], "state": {${fields}, "note": "where things stand, one line"}}`;
+{"events": [{"date": "YYYY-MM-DD", "title": "what happened, at most 100 characters", "detail": "one or two sentences", "actors": ["actor_id"], ${effect.field}, "kind": "event|shock", "place": "…", "lat": 0, "lng": 0}], "state": {${fields ? `${fields}, ` : ''}"note": "where things stand, one line"}${i.market ? ', "price_push": 0.0' : ''}}`;
 }
 
 /* ───────────────────────────── The report ───────────────────────────── */
@@ -403,6 +434,26 @@ export function worldOutcome(frame: Frame, p: WorldPoint | undefined): string {
   return `still open, ${pct(p.probability)} YES`;
 }
 
+/**
+ * What the prediction rests on, for the report agent: the statistical
+ * baseline from the price's own history, the prediction markets (the one on
+ * this same question named as such), and the worlds pooled.
+ */
+export function anchorsBlock(frame: Frame, quant: Quant | null, odds: ContextItem[], last: RoundStat | undefined): string {
+  const lines: string[] = [];
+  if (quant) {
+    const range = `80% of paths end between ${priceText(quant.p10, quant.currency)} and ${priceText(quant.p90, quant.currency)}, the middle at ${priceText(quant.p50, quant.currency)}`;
+    lines.push(`- Statistical baseline (${quant.symbol}'s own price history, no view on events)${quant.probability !== undefined && frame.kind === 'binary' ? `: ${pct(quant.probability)} YES` : ''}. ${range}. ${quant.method}`);
+  }
+  for (const o of odds) {
+    if (!o.odds) continue;
+    const same = frame.market === o.id;
+    lines.push(`- [${o.id}] ${same ? 'Prediction market on THIS question' : 'Related prediction market (a different question: context, not an anchor)'}: "${o.title}". ${o.excerpt ?? ''}`);
+  }
+  if (last) lines.push(`- The simulation: ${trajectoryLine(frame, last)}.`);
+  return lines.join('\n');
+}
+
 function reportAsk(frame: Frame, last: RoundStat | undefined): { ask: string; fields: string; push: string } {
   if (frame.kind === 'choice') {
     const pooled = last?.shares ? frame.outcomes.map((o, i) => `${o} ${pct(last.shares![i] ?? 0)}`).join(', ') : 'unknown';
@@ -421,7 +472,7 @@ function reportAsk(frame: Frame, last: RoundStat | undefined): { ask: string; fi
     };
   }
   return {
-    ask: `Give a calibrated final probability that the proposition resolves YES. The worlds pooled give ${last ? pct(last.consensus) : 'unknown'}; few worlds are a small sample, so weigh them with the base rate and the evidence, and if you move more than 10 points from the pool, say why in deviation_reason.`,
+    ask: `Give a calibrated final probability that the proposition resolves YES. The worlds pooled give ${last ? pct(last.consensus) : 'unknown'}. Weigh what the prediction rests on: a liquid prediction market on this same question is real money from many traders and usually the best single estimate; the statistical baseline is the outside view for a price; the worlds are a handful, a small sample, but each tells you what could move the outcome. Move off the market or the baseline only for reasons the sources and the simulation give, and if you end more than 10 points from the pool or from such a market, say why in deviation_reason.`,
     fields: '"probability": 0.0-1.0',
     push: '"push": "yes|no"',
   };
@@ -441,6 +492,8 @@ export interface ReportInput {
   citable?: boolean;
   /** Every move of the run, for the evidence ledger. */
   moves?: Move[];
+  /** What the prediction rests on (see anchorsBlock). */
+  anchors?: string;
   today: string;
 }
 
@@ -466,7 +519,7 @@ ${input.worlds.map(w => `WORLD ${w.world}: ended ${w.outcome}\n${w.history}`).jo
 
 THE WORLDS POOLED, PERIOD BY PERIOD:
 ${input.rounds.map(r => trajectoryLine(f, r)).join('\n')}
-${input.injects.length ? `\nEVENTS INJECTED DURING THE SIMULATION:\n${input.injects.map(t => `- ${t}`).join('\n')}\n` : ''}
+${input.anchors ? `\nWHAT THE PREDICTION RESTS ON:\n${input.anchors}\n` : ''}${input.injects.length ? `\nEVENTS INJECTED DURING THE SIMULATION:\n${input.injects.map(t => `- ${t}`).join('\n')}\n` : ''}
 ${ask}
 Then tell the story. "path": the course the future most likely takes, date by date from today to the horizon, built from what the worlds agree on (4 to 8 steps, real dates, named actors). "actor_moves": what each main actor is predicted to do, one line each. "worlds": how each world ended, one line each. Scenarios are the distinct ways the worlds played out (group worlds that ended alike), each with its probability and where it would unfold. Signposts are concrete, observable things to watch, each placed on Earth, saying which way they would move the prediction.${input.citable ? '\nSource every driver: give the ids of the sources it rests on, so a reader can follow it back.' : ''}
 

@@ -1,20 +1,43 @@
 import { describe, it, expect } from 'vitest';
-import { parsePlan, planFallback, searchWords } from './plan';
+import { desksFor, parsePlan, planFallback, searchWords, tickersIn, type ResearchPlan } from './plan';
 import { articleText, clipText, currentEventsDate, decodeEntities, parseCurrentEvents, parseGdelt, parseWikipedia, pickArticles, researchWeb, resetGdeltPause, type Fetcher, type GdeltArticle } from './web';
 
 describe('the research plan', () => {
   it('searches on the question\'s names first, without its question words or dates', () => {
-    expect(planFallback('Will Russia and Ukraine agree a ceasefire before 1 July 2027?')).toEqual({ news: ['Russia Ukraine ceasefire agree'], background: ['Russia', 'Ukraine'] });
+    expect(planFallback('Will Russia and Ukraine agree a ceasefire before 1 July 2027?')).toMatchObject({ news: ['Russia Ukraine ceasefire agree'], background: ['Russia', 'Ukraine'], desks: ['world', 'defense'], instruments: [] });
     expect(planFallback('Will OPEC+ announce a production cut before December 2026?').news[0]).toMatch(/^OPEC production/);
     expect(planFallback('Which way will the US Federal Reserve move rates at its next meeting?').background).toEqual(['US Federal Reserve']);
   });
 
   it('takes the model\'s plan, cleaned to plain keywords, and falls back when it is missing', () => {
-    expect(parsePlan({ news: ['"OPEC+" AND (cut OR quota)', 'Saudi output'], background: ['OPEC+'] }, 'q')).toEqual({ news: ['OPEC cut quota', 'Saudi output'], background: ['OPEC+'] });
+    expect(parsePlan({ news: ['"OPEC+" AND (cut OR quota)', 'Saudi output'], background: ['OPEC+'] }, 'q')).toMatchObject({ news: ['OPEC cut quota', 'Saudi output'], background: ['OPEC+'] });
     expect(parsePlan(null, 'Will the Bank of England cut rates?').news).toEqual(['Bank England rate cut']);
     expect(searchWords('a to EU of the Bank, or: rates!')).toBe('the Bank rates');
   });
+
+  it('reads the desks, tickers and market searches, keeping only real desks and well-formed tickers', () => {
+    const plan = parsePlan({
+      news: ['Solana ETF'], desks: ['crypto', 'gossip', 'Markets'], instruments: ['SOL-USD', 'not a ticker!', 'BTC-USD', 'ETH-USD'], markets: ['Solana 200 2026'],
+    }, 'Will Solana reach $200 by the end of 2026?');
+    expect(plan.desks).toEqual(['crypto', 'markets']);
+    expect(plan.instruments).toEqual(['SOL-USD', 'BTC-USD']);
+    expect(plan.markets).toEqual(['Solana 200 2026']);
+  });
+
+  it('finds the desks and the prices a question names when the model gives none', () => {
+    expect(desksFor('Will Solana reach $200 by the end of 2026?')).toEqual(['crypto', 'markets']);
+    expect(desksFor('Will Israel invade Lebanon by 2028?')).toEqual(['world', 'defense']);
+    expect(desksFor('Who will win the 2026 World Cup?')).toEqual(['sports']);
+    expect(desksFor('Will it rain?')).toEqual(['world']);
+    expect(tickersIn('Will Solana reach $200 by the end of 2026?')).toEqual(['SOL-USD']);
+    expect(tickersIn('Where will Brent crude settle on 31 December?')).toEqual(['BZ=F']);
+    // A name alone is no market question.
+    expect(tickersIn('Will Apple announce a foldable phone?')).toEqual([]);
+    expect(planFallback('Will Bitcoin trade above $100,000 in 2027?')).toMatchObject({ instruments: ['BTC-USD'], desks: ['crypto', 'markets'] });
+  });
 });
+
+const plan = (over: Partial<ResearchPlan>): ResearchPlan => ({ news: [], background: [], desks: [], instruments: [], markets: [], ...over });
 
 const art = (over: Partial<GdeltArticle>): GdeltArticle => ({ url: 'https://a.example/1', title: 'T', domain: 'a.example', seendate: '', language: 'English', sourcecountry: '', ...over });
 
@@ -84,7 +107,7 @@ describe('researchWeb', () => {
       ? new Response('no', { status: 403 })
       : respond('<p>OPEC+ will hold output steady, the group said, and no production cut is planned this year.</p>', 'text/html; charset=utf-8');
 
-    const items = await researchWeb({ news: ['OPEC production cut'], background: ['OPEC'] }, 'Will OPEC+ cut production?', 6, new AbortController().signal, { api, page, gdeltGapMs: 0 });
+    const { items } = await researchWeb(plan({ news: ['OPEC production cut'], background: ['OPEC'] }), 'Will OPEC+ cut production?', 6, new AbortController().signal, { api, page, gdeltGapMs: 0 });
     expect(items.map(i => [i.id, i.kind, i.url])).toEqual([
       ['w1', 'web', 'https://news.example/a'],
       ['w2', 'web', 'https://blocked.example/b'],
@@ -133,8 +156,8 @@ describe('GDELT, when it refuses', () => {
     };
     const page: Fetcher = async () => new Response('', { status: 404 });
     const deps = { api, page, gdeltGapMs: 0 };
-    await researchWeb({ news: ['Refused search one'], background: [] }, 'q', 4, new AbortController().signal, deps);
-    await researchWeb({ news: ['Refused search two'], background: [] }, 'q', 4, new AbortController().signal, deps);
+    await researchWeb(plan({ news: ['Refused search one'] }), 'q', 4, new AbortController().signal, deps);
+    await researchWeb(plan({ news: ['Refused search two'] }), 'q', 4, new AbortController().signal, deps);
     expect(gdelt).toBe(1);
     resetGdeltPause();
   });

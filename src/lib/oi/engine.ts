@@ -13,36 +13,45 @@
  * code is used; this is written from that description, for OSIRIS's feeds
  * and globe, on any provider.
  *
- *   1. context   research on the open web (news with its links, background) and
- *                OSIRIS's live feeds, cut to the question
- *   2. graph     the proposition, base rate, actors on the globe and their relations
- *   3. agents    the cast: the actors who decide it, each given its goal, levers,
- *                red lines and style; the simulated clock
+ *   1. context   research: the reporting on the question (the newsroom, GDELT,
+ *                Wikipedia's Current events) with its links, the market data for any
+ *                price it turns on, what prediction markets price it at, background,
+ *                and OSIRIS's live feeds, all cut to the question
+ *   2. graph     the proposition, base rate, actors on the globe and their relations;
+ *                for a question about a price, the price and the statistical baseline
+ *                its own history gives
+ *   3. agents    the cast: the actors who decide it (only those that can act), each
+ *                given its goal, levers, red lines and style; the simulated clock
  *   4. simulate  period by period, in every world: each actor moves (grounded in the
  *                sources at the start), then the world engine decides what actually
  *                happens and where the question stands; injected events land in
- *                every world
- *   5. report    the probability the worlds add up to, and the story: the predicted
- *                path, date by date, what each actor does, drivers (each sourced),
- *                scenarios and signposts
+ *                every world. On a price question each world has its own course for
+ *                the price, resampled from its history and spread across what can
+ *                happen; the period's events push it further, and the price, not a
+ *                model's judgment, settles the question
+ *   5. report    the prediction, weighed against what it rests on (the prediction
+ *                market on the same question, the statistical baseline, the worlds
+ *                pooled), and the story: the predicted path, date by date, what each
+ *                actor does, drivers (each sourced), scenarios and signposts
  *
  * Everything is announced as events (see ./types), which is how the globe
  * draws the analysis while it happens.
  */
 import { roundStatFor } from './aggregate';
+import { baseline, chanceOf, demean, logReturns, priceText, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
 import { DEPTHS, PANEL_SEED_MAX, estimateCalls, type SeedScope } from './depths';
 import { gatherContext, onTopic, terms } from './context';
 import { simulationClock } from './clock';
 import { extractJson, parseCast, parseMove, parseReport, parseStep, parseWorld } from './parse';
 import {
-  SYSTEM, askActorPrompt, askReportPrompt, castPrompt, feedBlock, historyBlock, movePrompt, movesBlock, reportPrompt, researchPrompt,
+  SYSTEM, anchorsBlock, askActorPrompt, askReportPrompt, castPrompt, feedBlock, historyBlock, movePrompt, movesBlock, reportPrompt, researchPrompt,
   stepPrompt, worldBrief, worldOutcome, worldPrompt,
 } from './prompts';
 import { ProviderError, type ChatFn, type ChatRequest } from './providers';
 import { dataExcerpts, sourceTexts, wholeData } from './sources';
-import { parsePlan, researchWeb, type ResearchPlan } from './web';
+import { parsePlan, researchWeb, type Research, type ResearchPlan } from './web';
 import type { RunState } from './state';
-import type { ContextItem, Depth, Frame, Link, Move, OiEvent, Period, RoundStat, SimEvent, Usage, WorldPoint } from './types';
+import type { ContextItem, Depth, Frame, Link, Move, OiEvent, Period, Quant, RoundStat, SimEvent, Usage, WorldPoint } from './types';
 
 /** The worlds' names, in order. */
 const WORLDS = ['A', 'B', 'C', 'D', 'E'];
@@ -68,7 +77,7 @@ export interface EngineDeps {
   takeInjects: () => string[];
   gather?: (question: string, seed: string, limit: number) => Promise<ContextItem[]>;
   /** The open-web research; tests pass their own. */
-  research?: (plan: ResearchPlan, question: string, limit: number, signal: AbortSignal) => Promise<ContextItem[]>;
+  research?: (plan: ResearchPlan, question: string, limit: number, signal: AbortSignal) => Promise<Research>;
   today?: string;
 }
 
@@ -154,23 +163,26 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   // 1. Research: the open web on the question (news with its links, and background), and the live OSIRIS feeds.
   s.emit({ t: 'phase', phase: 'context', label: input.useFeeds ? 'Researching the question: the news, the background, the live feeds' : 'Reading the seed material' });
   let context: ContextItem[] = [];
+  let series: Series[] = [];
   if (input.useFeeds) {
     const feeds = (deps.gather ?? gatherContext)(input.question, input.seed, depth.feed).catch(() => [] as ContextItem[]);
-    // The model plans the searches; without a plan, the question's own names and words do.
-    const planned = await s.json({ user: researchPrompt(input.question, input.seed, today), maxTokens: 400, temperature: 0.2, timeoutMs: 60_000 })
+    // The model plans the research; whatever it leaves out, the question's own names and words fill in.
+    const planned = await s.json({ user: researchPrompt(input.question, input.seed, today), maxTokens: 500, temperature: 0.2, timeoutMs: 60_000 })
       .catch(err => { if (err instanceof FatalError) throw err; return null; });
     s.check();
+    const plan = parsePlan(planned, input.question);
     const research = deps.research ?? researchWeb;
-    const [web, feed] = await Promise.all([
-      research(parsePlan(planned, input.question), input.question, depth.research, s.signal).catch(() => [] as ContextItem[]),
+    const [found, feed] = await Promise.all([
+      research(plan, input.question, depth.research, s.signal).catch(() => ({ items: [], series: [] }) as Research),
       feeds,
     ]);
-    // With real coverage of the question in hand, the feed's headlines about something else go:
-    // they would only be quoted as evidence for what they do not bear on.
+    series = found.series;
+    // The live feed only where it is about the question: a headline about something else is no evidence.
+    // The market board only for a question about markets, and only when the research found no price of its own.
     const words = terms(input.question);
-    const covered = web.filter(c => c.kind === 'web').length >= 3;
-    const kept = covered ? feed.filter(c => c.kind !== 'news' || onTopic(c, words)) : feed;
-    context = [...web, ...kept.map((c, i) => ({ ...c, id: `c${i + 1}` }))];
+    const aboutMarkets = plan.desks.some(d => d === 'markets' || d === 'crypto' || d === 'energy' || d === 'business');
+    const kept = feed.filter(c => (c.kind === 'news' || c.kind === 'social' ? onTopic(c, words) : c.kind === 'market' ? aboutMarkets && !series.length : true));
+    context = [...found.items, ...kept.map((c, i) => ({ ...c, id: `c${i + 1}` }))];
   }
   s.check();
   s.emit({ t: 'context', items: context });
@@ -184,13 +196,31 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   const passages = dataExcerpts(worldRaw.quotes, input.seed);
   const world = parseWorld(worldRaw, input.question, [...context, ...passages]);
   if (world.actors.length < 2) throw new Error('The model did not return a usable world model. Try again, or pick a stronger model.');
+  const periods = simulationClock(today, world.frame.horizon, depth.periods);
+  const horizon = periods[periods.length - 1].end;
+
+  // A question about a price: its own history gives the outside view, which becomes the base rate (a level)
+  // or the anchor (a value), and a line the actors and the report can quote.
+  const measured = world.frame.measure ? series.find(x => x.symbol.toUpperCase() === world.frame.measure!.symbol.toUpperCase()) ?? null : null;
+  const quant: Quant | null = measured && world.frame.measure ? baseline(measured, world.frame.measure, today, horizon) : null;
+  if (quant) {
+    if (world.frame.kind === 'binary' && quant.probability !== undefined) {
+      world.frame = { ...world.frame, baseRate: Math.min(0.99, Math.max(0.01, quant.probability)), baseRateReason: `${quant.symbol}'s own price history: ${quant.method}` };
+    }
+    if (world.frame.kind === 'number' && world.frame.anchor === null) world.frame = { ...world.frame, anchor: quant.price };
+    const range = ` Statistical baseline to ${horizon}: ${quant.method} In 80% of the paths it ends between ${priceText(quant.p10, quant.currency)} and ${priceText(quant.p90, quant.currency)}.`;
+    context = context.map(c => (c.kind === 'series' && c.symbol === quant.symbol ? { ...c, excerpt: `${c.excerpt ?? ''}${range}` } : c));
+  } else if (world.frame.measure) {
+    world.frame = { ...world.frame, measure: null };
+  }
   const sources = [...context, ...passages, ...(data ? [wholeData(input.seed)] : [])];
-  if (sources.length > context.length) s.emit({ t: 'context', items: sources });
+  if (sources.length > context.length || quant) s.emit({ t: 'context', items: sources });
   const evidence = feedBlock(sources);
   // What each source says, to hold every quote to.
   const texts = sourceTexts(sources, data);
   const citable = texts.size > 0;
   s.emit({ t: 'frame', frame: world.frame });
+  if (quant) s.emit({ t: 'quant', quant });
   for (const actor of world.actors) s.emit({ t: 'actor', actor });
   for (const link of world.links) s.emit({ t: 'link', link });
   s.emitUsage();
@@ -200,16 +230,17 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   const name = (id: string) => world.actors.find(a => a.id === id)?.name ?? id;
 
   // 3. The cast: the actors who decide the outcome, each played as an agent; and the simulated clock.
-  const periods = simulationClock(today, frame.horizon, depth.periods);
   const worlds = WORLDS.slice(0, depth.worlds);
   s.emit({ t: 'phase', phase: 'agents', label: `Casting the actors who decide it` });
   const castRaw = await s.json({ user: castPrompt(brief, depth.actors, today, periods), maxTokens: 2500, temperature: 0.5, timeoutMs: 150_000 })
     .catch(err => { if (err instanceof FatalError || s.signal.aborted) throw err; return {}; });
-  let cast = parseCast(castRaw, depth.actors, actorIds);
+  // Only actors that can act play: a market or a place is the world they move, not one of them.
+  const agents = world.actors.filter(a => a.kind !== 'market' && a.kind !== 'place');
+  let cast = parseCast(castRaw, depth.actors, new Set(agents.map(a => a.id)));
   if (cast.length < 2) {
     // A cast the model could not give: the actors who lean hardest, playing their roles.
     s.emit({ t: 'warn', message: 'The cast came back unusable; the actors who lean hardest play instead.' });
-    cast = [...world.actors].sort((a, b) => Math.abs(b.lean) - Math.abs(a.lean)).slice(0, depth.actors)
+    cast = [...(agents.length >= 2 ? agents : world.actors)].sort((a, b) => Math.abs(b.lean) - Math.abs(a.lean)).slice(0, depth.actors)
       .map(a => ({ id: a.id, persona: { goal: a.role, levers: [], redLines: '', style: '' } }));
   }
   for (const c of cast) s.emit({ t: 'cast', actor: c.id, persona: c.persona });
@@ -227,6 +258,24 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
 
   const moveTone = (stance: Move['stance']): Link['tone'] => (stance === 'cooperate' ? 'support' : stance === 'hold' ? 'neutral' : 'oppose');
 
+  // A price question: each world's own course for the price, period by period, before any event pushes it.
+  const pricing = quant && measured && frame.measure ? (() => {
+    const stats = seriesStats(measured)!;
+    const returns = demean(logReturns(measured));
+    let from = today;
+    const steps = periods.map(p => { const d = daysFrom(from, p.end); from = p.end; return tradingDays(d, stats.perYear); });
+    return {
+      measure: frame.measure, returns, steps, start: quant.price, currency: measured.currency, symbol: measured.symbol,
+      courses: worldCourses(returns, steps, worlds.length, seedOf(`${measured.symbol}:${horizon}:worlds`)),
+      // A level, or a value at the horizon: the price settles the question, not a model's judgment.
+      decides: (frame.kind === 'binary' && frame.measure.threshold !== undefined) || frame.kind === 'number',
+    };
+  })() : null;
+  /** How far the events in each world have pushed its price beyond its own course, as a multiple. */
+  const pushed = new Map<string, number>();
+  const money = (n: number) => priceText(n, pricing?.currency ?? '');
+  const priceNow = (w: string) => latest.get(w)?.price?.close ?? pricing?.start ?? 0;
+
   const playWorld = async (w: string, wi: number, period: Period, fresh: string[]) => {
     const last = latest.get(w) ?? null;
     // A world where the question has already resolved needs no more moves: its outcome stands.
@@ -241,12 +290,15 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     const others = movesBlock(moves.filter(m => m.world === w && m.period === period.index - 1), name);
     const temperature = 0.7 + Math.min(wi, 3) * 0.1;
 
+    const marketNow = pricing
+      ? `${pricing.symbol} is at ${money(priceNow(w))}${period.index > 1 ? ` (it was ${money(pricing.start)} on ${today})` : ''}.`
+      : undefined;
     const played = await Promise.all(players.map(async actor => {
       s.check();
       s.emit({ t: 'thinking', world: w, actor: actor.id, period: period.index });
       const user = movePrompt({
         frame, actor, cast: players, world: w, period, periods: periods.length, brief, evidence, data,
-        history, others, injects: fresh, citable, today,
+        history, others, injects: fresh, citable, market: marketNow, today,
       });
       const ask = (u: string) => s.json({ user: u, maxTokens: 900, temperature, timeoutMs: 120_000 });
       try {
@@ -273,17 +325,26 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     const now = played.filter((m): m is Move => m !== null);
     moves.push(...now);
 
+    // The price's own course this period, before the period's events push it.
+    const course = pricing ? pricing.courses[wi][period.index - 1] : null;
+    const before = pushed.get(w) ?? 1;
+    const market = pricing && course ? {
+      decides: pricing.decides,
+      line: `${pricing.symbol} starts this period at ${money(priceNow(w))}. On its own course (the market's usual randomness, before this period's events) it would end the period at ${money(pricing.start * course.close * before)}, trading between ${money(pricing.start * course.low * before)} and ${money(pricing.start * course.high * before)}.${pricing.measure.threshold !== undefined ? ` The level the question is about: ${money(pricing.measure.threshold)}.` : ''}`,
+    } : undefined;
+
     // What actually happens, and where the question then stands.
     const step = parseStep(
       await s.json({
         user: stepPrompt({
           frame, world: w, worldIndex: wi, worlds: worlds.length, period, periods: periods.length, brief,
-          history, standing: last ? `${worldOutcome(frame, last)}. ${last.note}` : questionStart(frame), moves: movesBlock(now, name), injects: fresh, today,
+          history, standing: last ? `${worldOutcome(frame, last)}. ${last.note}` : questionStart(frame), moves: movesBlock(now, name), injects: fresh, market, today,
         }),
         maxTokens: 2200, temperature: 0.5 + Math.min(wi, 3) * 0.15, timeoutMs: 150_000,
       }),
-      w, period, actorIds, frame, last,
+      w, period, actorIds, frame, last, Boolean(market?.decides),
     );
+    const point = pricing && course ? pricePoint(step.point, step.push, course, before, w, period) : step.point;
     // The operator's events happen in every world, as they were injected.
     const injectedHere: SimEvent[] = fresh.map((t, i) => ({
       id: `${w}:${period.index}:i${i + 1}`, world: w, period: period.index, date: period.start, title: t, detail: 'Injected by the operator.',
@@ -293,9 +354,37 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
       events.push(e);
       s.emit({ t: 'event', event: e });
     }
-    latest.set(w, step.point);
-    s.emit({ t: 'point', point: step.point });
+    latest.set(w, point);
+    s.emit({ t: 'point', point });
   };
+
+  /**
+   * A world's standing on a price question: the price's own course, pushed by
+   * the period's events, and on a level or a value the price settles it. A
+   * level touched is YES at once; one not reached by the horizon is NO; in
+   * between, the chance is how often the price's own moves would get there
+   * from where it now stands in the time left.
+   */
+  function pricePoint(p: WorldPoint, push: number, course: { close: number; high: number; low: number }, before: number, w: string, period: Period): WorldPoint {
+    const pr = pricing!;
+    const after = before * (1 + push);
+    pushed.set(w, after);
+    const open = priceNow(w);
+    const close = pr.start * course.close * after;
+    const price = { close, high: Math.max(open, close, pr.start * course.high * after), low: Math.min(open, close, pr.start * course.low * after) };
+    const m = pr.measure;
+    if (frame.kind === 'number') return { ...p, value: close, price };
+    if (frame.kind !== 'binary' || m.threshold === undefined) return { ...p, price };
+    const above = m.direction !== 'below';
+    const touched = m.touch && (above ? price.high >= m.threshold : price.low <= m.threshold);
+    const last = period.index === periods.length;
+    const endsThere = above ? close >= m.threshold : close <= m.threshold;
+    const resolved = touched ? 'yes' : last ? (endsThere && !m.touch ? 'yes' : 'no') : null;
+    const left = pr.steps.slice(period.index).reduce((t, n) => t + n, 0);
+    const probability = resolved === 'yes' ? 0.99 : resolved === 'no' ? 0.01
+      : Math.min(0.99, Math.max(0.01, chanceOf(m, close, pr.returns, left, seedOf(`${w}:${period.index}`), 1500)));
+    return { ...p, probability, resolved, price };
+  }
 
   for (const period of periods) {
     s.check();
@@ -333,9 +422,10 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     history: historyBlock(periods, events.filter(e => e.world === w), periods.length + 1),
     outcome: worldOutcome(frame, latest.get(w)),
   }));
+  const anchors = anchorsBlock(frame, quant, sources.filter(c => c.kind === 'odds'), lastStat);
   const report = parseReport(
     await s.json({
-      user: reportPrompt({ frame, brief, periods, worlds: summaries, rounds: stats, injects: injected, evidence, data, citable, moves, today }),
+      user: reportPrompt({ frame, brief, periods, worlds: summaries, rounds: stats, injects: injected, evidence, data, citable, moves, anchors, today }),
       maxTokens: 4000, temperature: 0.3, timeoutMs: 180_000,
     }),
     swarm, actorIds, frame, new Set(texts.keys()), new Set(worlds),
@@ -349,6 +439,8 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   });
   s.emitUsage();
 }
+
+const daysFrom = (a: string, b: string) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000));
 
 /** Where the question stands before anything happens: the frame's own starting point. */
 function questionStart(frame: Frame): string {

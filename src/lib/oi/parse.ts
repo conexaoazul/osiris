@@ -187,6 +187,24 @@ export function parseWorld(raw: Record<string, unknown>, question: string, conte
     baseRateReason: text(raw.base_rate_reason ?? raw.baseRateReason, 400),
     focus: focus.lat === null && !focus.place ? null : focus,
   };
+  // The price the question turns on, when the research found it: a ticker the model names without data behind it is dropped.
+  const m = obj(raw.measure);
+  const symbol = text(m.symbol, 20).toUpperCase();
+  const priced = symbol ? context.find(c => c.kind === 'series' && c.symbol?.toUpperCase() === symbol) : undefined;
+  if (priced?.symbol) {
+    const level = amount(m.threshold ?? m.level);
+    frame.measure = {
+      symbol: priced.symbol,
+      ...(frame.kind === 'binary' && level !== null && level > 0 ? {
+        threshold: level,
+        direction: oneOf(m.direction, ['above', 'below'] as const, 'above'),
+        touch: m.touch !== false && m.touch !== 'false',
+      } : {}),
+    };
+  }
+  // The prediction market that asks this same question, when one does.
+  const market = text(raw.market, 8).toLowerCase();
+  if (market && context.some(c => c.kind === 'odds' && c.id === market)) frame.market = market;
 
   const actors: Actor[] = [];
   const ids = new Set<string>();
@@ -322,11 +340,18 @@ export function parseMove(
  * the world's last one, then on the frame's prior; a number question with
  * neither throws, and the step is asked again.
  */
+/**
+ * The world engine's step: the period's events, where the question stands,
+ * and, on a price question (`priced`), how far the events push the price
+ * beyond its own course (`push`, a fraction, at most ±30%). On a price
+ * question the price decides the standing, so a reply without one is fine.
+ */
 export function parseStep(
   raw: Record<string, unknown>, world: string, period: Period, actorIds: Set<string>,
   frame: Pick<Frame, 'kind' | 'outcomes' | 'baseRate' | 'prior' | 'anchor'>,
   last: WorldPoint | null,
-): { events: SimEvent[]; point: WorldPoint } {
+  priced = false,
+): { events: SimEvent[]; point: WorldPoint; push: number } {
   const outcomes = frame.kind === 'choice' ? frame.outcomes : [];
   const events: SimEvent[] = [];
   let shocks = 0;
@@ -357,21 +382,24 @@ export function parseStep(
   const st = obj(raw.state ?? raw.standing);
   const note = text(st.note ?? st.summary, 240);
   const said = text(st.resolved, 60).toLowerCase();
+  const pushed = amount(raw.price_push ?? st.price_push);
+  // A model that writes 8 for 8% means 0.08.
+  const push = pushed === null ? 0 : clamp(Math.abs(pushed) > 1 ? pushed / 100 : pushed, -0.3, 0.3);
   if (frame.kind === 'choice') {
     const won = said && said !== 'null' && said !== 'none' ? favored(st.resolved, outcomes) : '';
     const shares = won
       ? outcomes.map(o => (o === won ? 1 : 0))
       : normalizeShares(st.shares ?? st.distribution, outcomes, last?.shares ?? (frame.prior.length === outcomes.length ? frame.prior : uniform(outcomes.length)));
-    return { events, point: { world, period: period.index, probability: Math.max(...shares), shares, resolved: won || null, note } };
+    return { events, point: { world, period: period.index, probability: Math.max(...shares), shares, resolved: won || null, note }, push };
   }
   if (frame.kind === 'number') {
     const value = amount(st.value ?? st.estimate) ?? last?.value ?? frame.anchor;
-    if (value === null || value === undefined) throw new Error('no value in the reply');
-    return { events, point: { world, period: period.index, probability: 0.5, value, resolved: null, note } };
+    if ((value === null || value === undefined) && !priced) throw new Error('no value in the reply');
+    return { events, point: { world, period: period.index, probability: 0.5, value: value ?? 0, resolved: null, note }, push };
   }
   const resolved = /^y(es)?$/.test(said) ? 'yes' : /^no?$/.test(said) ? 'no' : null;
   const probability = resolved === 'yes' ? 0.99 : resolved === 'no' ? 0.01 : prob(st.probability ?? st.p, last?.probability ?? frame.baseRate);
-  return { events, point: { world, period: period.index, probability, resolved, note } };
+  return { events, point: { world, period: period.index, probability, resolved, note }, push };
 }
 
 /* ───────────────────────────── The report ───────────────────────────── */

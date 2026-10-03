@@ -36,10 +36,16 @@ describe('selectContext', () => {
     expect(items.some(i => i.title.startsWith('Old story'))).toBe(false);
   });
 
-  it('pads a question the feed does not cover with the big stories', () => {
-    const items = selectContext('Will the Moon base open?', '', 10, { news: NEWS, quakes: [], quotes: [] }, NOW);
-    expect(items[0].title).toBe('Missile strike reported near Kharkiv');
-    expect(items[0]).toMatchObject({ lat: 49.99, lng: 36.23 });
+  it('leaves a question the feed does not cover without filler: a story about something else is no evidence', () => {
+    expect(selectContext('Will the Moon base open?', '', 10, { news: NEWS, quakes: [], quotes: [] }, NOW)).toEqual([]);
+  });
+
+  it('keeps a post from a social network as what it is', () => {
+    const items = selectContext('Will the Kharkiv strikes stop?', '', 10, { news: [
+      { title: 'Missile strike reported near Kharkiv', published: at(1), source_name: 'Rybar', link: 'https://t.me/rybar_in_english/1' },
+      { title: 'Kharkiv power restored after strike', published: at(2), source_name: 'Kyiv Independent', link: 'https://kyivindependent.com/x' },
+    ], quakes: [], quotes: [] }, NOW);
+    expect(items.map(i => i.kind)).toEqual(['social', 'news']);
   });
 
   it('adds quakes when asked about them, and the market line', () => {

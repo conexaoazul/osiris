@@ -2,14 +2,21 @@
  * OSIRIS OI: the open web a forecast reads.
  *
  * Before the world model, OI researches the question the way an analyst
- * would: recent coverage from GDELT's open index of the world's newsrooms
- * and from Wikipedia's Current events (the day's notable events, each
- * summarised by its editors and linked to the report it cites), the article
- * itself where the publisher serves it (cut to the paragraphs that bear on
- * the question), and background from Wikipedia. Every item keeps its real
- * link, so every quote an actor makes can be opened and checked where it
- * was published. GDELT refuses often under load; when it does, it is left
- * alone for a while and Wikipedia's events carry the coverage.
+ * would, from sources that can be checked:
+ *   - the reporting: the newsroom's desks (publishers' own feeds, see
+ *     ./newsroom) and Yahoo Finance's newswire for any ticker in play, GDELT's
+ *     open index of the world's newsrooms when it answers, and Wikipedia's
+ *     Current events (the day's notable events, each summarised by its editors
+ *     and linked to the report it cites); the article itself where the
+ *     publisher serves it, cut to the paragraphs that bear on the question,
+ *     else the publisher's own summary;
+ *   - the numbers: two years of daily prices for any price the question turns
+ *     on, with where it stands, how far it has moved and how much it swings;
+ *   - the crowd: what prediction markets price the question at;
+ *   - the background: Wikipedia.
+ * Every item keeps its real link, so every quote an actor makes can be opened
+ * and checked where it was published. Social networks are no source: the
+ * newsroom drops them.
  *
  * Articles are fetched through the SSRF guard, a few at a time, with a hard
  * time and size limit each: a slow or hostile site costs only its own item.
@@ -17,17 +24,21 @@
 import { safeFetch } from '@/lib/ssrf-guard';
 import { terms } from './words';
 import { text } from './parse';
-import type { ResearchPlan } from './plan';
+import { namesIn, type ResearchPlan } from './plan';
+import { fetchSeries, oddsLine, pickOdds, searchMarkets } from './markets';
+import { searchNewsroom } from './newsroom';
+import { priceText, seriesStats, type Series } from './quant';
 import type { ContextItem } from './types';
 
 export { parsePlan, planFallback, searchWords, type ResearchPlan } from './plan';
+export type { Series } from './quant';
 
 export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface WebDeps {
   /** For publishers' pages: through the SSRF guard. */
   page: Fetcher;
-  /** For the two fixed APIs, GDELT and Wikipedia. */
+  /** For the fixed APIs and feeds: GDELT, Wikipedia, the newsroom, Yahoo Finance, the prediction markets. */
   api: Fetcher;
   /** GDELT asks for one request every five seconds from an address; this paces them across runs. */
   gdeltGapMs: number;
@@ -37,7 +48,7 @@ const UA = 'Mozilla/5.0 (compatible; OSIRIS-OI/1.0; +https://osirisai.live/docs#
 
 /* ───────────────────────────── GDELT ───────────────────────────── */
 
-/** A news article found for the question: by GDELT, or cited by Wikipedia's Current events. */
+/** A news article found for the question: in the newsroom, by GDELT, or cited by Wikipedia's Current events. */
 export interface GdeltArticle {
   url: string;
   title: string;
@@ -51,6 +62,8 @@ export interface GdeltArticle {
   via?: string;
   /** How many of the search's words it shares. */
   score?: number;
+  /** The publisher's own summary, from its feed: what an actor reads when the page itself cannot be. */
+  summary?: string;
 }
 
 /** GDELT's date, 20260930T224500Z, as ISO. */
@@ -357,48 +370,95 @@ async function each<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): 
   return out;
 }
 
+/** What the research found: its sources, and the price histories behind any market data among them. */
+export interface Research {
+  items: ContextItem[];
+  series: Series[];
+}
+
+const pctText = (x: number | null) => (x === null ? 'n/a' : `${x >= 0 ? '+' : '−'}${Math.abs(Math.round(x * 1000) / 10)}%`);
+
+/** A price history as a source the actors can quote: where it stands, its year, its moves, its swings. */
+export function seriesItem(s: Series, id: string): ContextItem | null {
+  const st = seriesStats(s);
+  if (!st) return null;
+  const p = (n: number) => priceText(n, s.currency);
+  return {
+    id,
+    kind: 'series',
+    symbol: s.symbol,
+    title: `${s.name} (${s.symbol}): ${p(st.price)} on ${st.asOf}`,
+    source: 'Yahoo Finance',
+    published: `${st.asOf}T00:00:00Z`,
+    place: '',
+    lat: null,
+    lng: null,
+    url: `https://finance.yahoo.com/quote/${encodeURIComponent(s.symbol)}`,
+    excerpt: `${s.name} (${s.symbol}) closed at ${p(st.price)} on ${st.asOf}. Past year: high ${p(st.high)} on ${st.highOn}, low ${p(st.low)} on ${st.lowOn}. Change over 30 days ${pctText(st.change30)}, 90 days ${pctText(st.change90)}, one year ${pctText(st.change365)}. It swings ${Math.round(st.vol * 100)}% a year (annualised volatility of daily moves).`,
+  };
+}
+
+/** The names a story must carry to be about the question: the first word of each news search, else the question's own names. */
+function namesFor(plan: ResearchPlan, question: string): string[] {
+  const first = plan.news.map(q => terms(q)[0]).filter(Boolean);
+  return [...new Set(first.length ? first : namesIn(question).flatMap(n => terms(n)))];
+}
+
 /**
- * The research for a question: news articles as `w1`, `w2`… (newest coverage
- * that bears on it, each with its link and, where the site serves it, what
- * the article says), then background as `b1`, `b2`…, from Wikipedia.
+ * The research for a question: news articles as `w1`, `w2`… (the newest
+ * reporting that bears on it, each with its link and what the article says),
+ * market data as `q1`…, prediction markets as `m1`…, then background as
+ * `b1`, `b2`…, from Wikipedia.
  */
-export async function researchWeb(plan: ResearchPlan, question: string, limit: number, signal: AbortSignal, deps: WebDeps = liveWeb): Promise<ContextItem[]> {
+export async function researchWeb(plan: ResearchPlan, question: string, limit: number, signal: AbortSignal, deps: WebDeps = liveWeb): Promise<Research> {
   const words = terms(question, ...plan.news);
-  const [gdelt, events, background] = await Promise.all([
-    (async () => {
-      const out: GdeltArticle[][] = [];
-      for (const q of plan.news) out.push(await searchGdelt(q, deps, signal));
-      return out;
-    })(),
+  const names = namesFor(plan, question);
+  const [room, gdelt, events, background, series, markets] = await Promise.all([
+    searchNewsroom({ desks: plan.desks, tickers: plan.instruments, words, names }, deps.api, signal).catch(() => [] as GdeltArticle[]),
+    // GDELT asks for one request every five seconds: one search, the first.
+    plan.news[0] ? searchGdelt(plan.news[0], deps, signal) : Promise.resolve([] as GdeltArticle[]),
     // Wikipedia's Current events, on the first search: the events its editors judged notable, each with its report.
     plan.news[0] ? searchCurrentEvents(plan.news[0], terms(plan.news[0]), deps, signal) : Promise.resolve([]),
     Promise.all(plan.background.map(t => searchWikipedia(t, deps, signal))),
+    Promise.all(plan.instruments.slice(0, 2).map(sym => fetchSeries(sym, deps.api, signal).catch(() => null))),
+    Promise.all(plan.markets.slice(0, 2).map(q => searchMarkets(q, deps.api, signal).catch(() => []))),
   ]);
-  const lists = [...gdelt, events];
 
   // Read a few more than are kept: some sites refuse, and those that answer come first.
-  const picked = pickArticles(lists, limit + 4);
+  const picked = pickArticles([room, gdelt, events], limit + 4);
   const read = await each(picked, 4, a => readArticle(a, words, deps, signal));
-  const ranked = picked.map((a, i) => ({ a, r: read[i] })).sort((x, y) => Number(Boolean(y.r?.excerpt)) - Number(Boolean(x.r?.excerpt))).slice(0, limit);
+  const excerptOf = (i: number) => read[i]?.excerpt || picked[i].summary || '';
+  const ranked = picked.map((a, i) => ({ a, r: read[i], excerpt: excerptOf(i) }))
+    .sort((x, y) => Number(Boolean(y.r?.excerpt)) - Number(Boolean(x.r?.excerpt)) || Number(Boolean(y.excerpt)) - Number(Boolean(x.excerpt)))
+    .slice(0, limit);
 
-  const items: ContextItem[] = ranked.map(({ a, r }, i) => ({
+  const items: ContextItem[] = ranked.map(({ a, r, excerpt }, i) => ({
     id: `w${i + 1}`,
     kind: 'web',
     title: a.title,
     // An event Wikipedia summarised keeps both names: its words are Wikipedia's, its report the outlet's.
-    source: a.via ? `${text(a.outlet, 48) || a.domain} (${a.via} summary)` : text(r?.site, 60) || a.outlet || a.domain.replace(/^www\./, ''),
+    source: a.via ? `${text(a.outlet, 48) || a.domain} (${a.via} summary)` : a.outlet || text(r?.site, 60) || a.domain.replace(/^www\./, ''),
     published: a.seendate || (r?.published ?? ''),
     place: a.sourcecountry,
     lat: null,
     lng: null,
     url: a.url,
-    ...(r?.excerpt ? { excerpt: r.excerpt } : {}),
+    ...(excerpt ? { excerpt } : {}),
   }));
+  const found = series.filter((x): x is Series => x !== null);
+  for (const sr of found) {
+    const item = seriesItem(sr, `q${items.filter(c => c.kind === 'series').length + 1}`);
+    if (item) items.push(item);
+  }
+  pickOdds(markets.flat(), question, terms(question)).forEach((m, i) => {
+    const { url, ...odds } = m;
+    items.push({ id: `m${i + 1}`, kind: 'odds', title: m.question, source: m.platform, published: '', place: '', lat: null, lng: null, url, excerpt: oddsLine(m), odds });
+  });
   const seen = new Set<string>();
   for (const b of background) {
     if (!b || seen.has(b.url)) continue;
     seen.add(b.url);
     items.push({ id: `b${seen.size}`, kind: 'wiki', title: b.title, source: 'Wikipedia', published: '', place: '', lat: null, lng: null, url: b.url, excerpt: b.extract });
   }
-  return items;
+  return { items, series: found };
 }
