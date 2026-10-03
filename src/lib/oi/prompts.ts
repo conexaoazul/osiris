@@ -454,7 +454,11 @@ export function anchorsBlock(frame: Frame, quant: Quant | null, odds: ContextIte
   for (const o of odds) {
     if (!o.odds) continue;
     const same = frame.market === o.id;
-    lines.push(`- [${o.id}] ${same ? 'Prediction market on THIS question' : 'Related prediction market (a different question: context, not an anchor)'}: "${o.title}". ${o.excerpt ?? ''}`);
+    const what = same ? 'Prediction market on THIS question'
+      // A "which" question is priced one outcome at a time: each market is the crowd's price on one of them.
+      : frame.kind === 'choice' ? 'Prediction market on one outcome (or a related question)'
+        : 'Related prediction market (a different question: context, not an anchor)';
+    lines.push(`- [${o.id}] ${what}: "${o.title}". ${o.excerpt ?? ''}`);
   }
   if (last) lines.push(`- The worlds as they ended: ${trajectoryLine(frame, last)}.`);
   const sim = quant?.simulated;
@@ -470,7 +474,7 @@ function reportAsk(frame: Frame, last: RoundStat | undefined, simulated?: { prob
   if (frame.kind === 'choice') {
     const pooled = last?.shares ? frame.outcomes.map((o, i) => `${o} ${pct(last.shares![i] ?? 0)}`).join(', ') : 'unknown';
     return {
-      ask: `Give a calibrated final share for each outcome, in the order listed (${outcomeList(frame)}). The worlds pooled give ${pooled}; if you move any outcome more than 10 points from them, say why in deviation_reason.`,
+      ask: `Give a calibrated final share for each outcome, in the order listed (${outcomeList(frame)}). The worlds pooled give ${pooled}. Where a liquid prediction market prices one of the outcomes, it is real money on that outcome: weigh it as such. If you move any outcome more than 10 points from the worlds or from such a market, say why in deviation_reason.`,
       fields: `"shares": [${frame.outcomes.map(() => '0.0').join(', ')}]`,
       push: '"push": "yes|no", "favors": "the outcome it helps"',
     };

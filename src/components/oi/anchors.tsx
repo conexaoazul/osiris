@@ -71,8 +71,14 @@ export function Anchors({ s, selected, onSelect }: { s: RunState; selected: stri
     if (q?.simulated?.probability !== undefined) rows.push({ key: 'sim', label: 'The simulation, priced', detail: `${s.worlds.length} worlds’ events, across the market’s own paths`, color: ANCHOR.simulation, value: q.simulated.probability });
     else if (last && f.kind === 'binary') rows.push({ key: 'sim', label: 'The worlds pooled', detail: `${s.worlds.length} simulated worlds`, color: ANCHOR.simulation, value: last.consensus });
     if (r && f.kind === 'binary') rows.push({ key: 'pred', label: 'Prediction', detail: `${r.confidence} confidence`, color: ANCHOR.prediction, value: r.probability, strong: true, select: 'r:report' });
-    for (const m of related.slice(0, 3)) {
-      if (m.odds) rows.push({ key: m.id, label: 'Related market', detail: `“${m.title}”`, color: ANCHOR.market, value: m.odds.probability, select: `c:${m.id}`, muted: true });
+    if (r?.shares && f.kind === 'choice') {
+      f.outcomes.forEach((o, i) => {
+        if (i < 4) rows.push({ key: `pred:${i}`, label: `Prediction · ${o}`, detail: i === 0 ? `${r.confidence} confidence` : '', color: ANCHOR.prediction, value: r.shares![i] ?? 0, strong: i === 0, select: 'r:report' });
+      });
+    }
+    // A "which" question is priced one outcome at a time: each market stands beside the prediction, not behind it.
+    for (const m of related.slice(0, f.kind === 'choice' ? 4 : 3)) {
+      if (m.odds) rows.push({ key: m.id, label: f.kind === 'choice' ? `${m.odds.platform} traders` : 'Related market', detail: `“${m.title}”`, color: ANCHOR.market, value: m.odds.probability, select: `c:${m.id}`, muted: f.kind !== 'choice' });
     }
   }
   if (!rows.length) return null;
