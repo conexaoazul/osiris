@@ -24,6 +24,8 @@ import { Avatar, IconButton, Mentions, Overline, PointTag, STANCE, StanceTag, Ty
 import { EventRow, LineGlyph, MoveRow, periodReached } from './lists';
 import { PushTag, Quotes, SOURCE_KIND, SourceLink, Verbatim, sourceLabel } from './quotes';
 import { evidenceLedger } from '@/lib/oi/sources';
+import { priceText } from '@/lib/oi/quant';
+import { ANCHOR } from './anchors';
 
 export interface ObjectViewProps {
   s: RunState;
@@ -416,8 +418,15 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       const inReport = s.links.filter(l => l.kind === 'cite' && l.to === sel.key && l.from === 'r:report');
       const quoters = new Set(quotedBy.map(l => l.from)).size;
       inGraph = bears.length + quotedBy.length + inReport.length > 0;
+      const q = c.kind === 'series' && s.quant?.symbol === c.symbol ? s.quant : null;
       props = [
         ['Id', <span key="i" className="font-mono">[{c.id}]</span>],
+        ['Price of YES', c.odds ? <span key="o" className="font-mono" style={{ color: ANCHOR.market }}>{pct(c.odds.probability)}{s.frame?.market === c.id ? <span className="text-[var(--text-muted)]"> · the market on this question</span> : null}</span> : null],
+        ['Traded', c.odds ? (c.odds.platform === 'Polymarket' ? `$${Math.round(c.odds.volume).toLocaleString('en-US')}` : `${Math.round(c.odds.volume).toLocaleString('en-US')} mana`) : null],
+        ['Closes', c.odds?.closes ? new Date(c.odds.closes).toLocaleDateString() : null],
+        ['Swings', q ? `${Math.round(q.vol * 100)}% a year` : null],
+        ['Baseline', q ? (q.probability !== undefined ? <span key="b" className="font-mono" style={{ color: ANCHOR.baseline }}>{pct(q.probability)} by the horizon</span> : `${priceText(q.p10, q.currency)}–${priceText(q.p90, q.currency)} at the horizon (80%)`) : null],
+        ['Priced sim.', q?.simulated ? (q.simulated.probability !== undefined ? <span key="sp" className="font-mono" style={{ color: ANCHOR.simulation }}>{pct(q.simulated.probability)}</span> : `${priceText(q.simulated.p10, q.currency)}–${priceText(q.simulated.p90, q.currency)} (80%)`) : null],
         [c.kind === 'data' ? 'From' : 'Source', <span key="s" className="inline-flex items-center gap-1.5">{sourceLabel(c, c.id)}<SourceLink url={c.url} /></span>],
         ['Location', c.place],
         ['Published', c.published ? `${new Date(c.published).toLocaleString()} · ${ago(c.published)}` : ''],
@@ -430,10 +439,16 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
               <blockquote className="pl-2.5 border-l-2 border-[var(--border-primary)] text-[11.5px] leading-relaxed text-[var(--text-secondary)]">{c.excerpt}</blockquote>
             </Group>
           )}
+          {c.kind === 'social' && (
+            <p className="rounded-md px-2.5 py-2 text-[11px] leading-snug border" style={{ color: T.text, background: 'rgba(255,149,0,0.06)', borderColor: 'rgba(255,149,0,0.25)' }}>
+              A post on a social network: an unverified claim, not reporting. The actors were told to weigh it as one.
+            </p>
+          )}
+          {q && <p className="text-[10.5px] leading-snug text-[var(--text-muted)]">{q.method}</p>}
           {c.url && (
             <a href={c.url} target="_blank" rel="noopener noreferrer nofollow"
               className="self-start inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-[var(--border-primary)] text-[10px] font-mono tracking-[0.12em] uppercase text-[var(--text-secondary)] hover:text-[var(--cyan-primary)] hover:border-[var(--border-active)] transition-colors">
-              Open the {c.kind === 'wiki' ? 'article on Wikipedia' : c.kind === 'web' ? 'article' : 'source'} ↗
+              Open the {c.kind === 'wiki' ? 'article on Wikipedia' : c.kind === 'web' ? 'article' : c.kind === 'odds' ? `market on ${c.source}` : c.kind === 'series' ? 'quote on Yahoo Finance' : c.kind === 'social' ? 'post' : 'source'} ↗
             </a>
           )}
           {inReport.length > 0 && (

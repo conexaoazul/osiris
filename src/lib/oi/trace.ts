@@ -77,8 +77,8 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
   const count = <T,>(xs: T[], f: (x: T) => boolean) => xs.filter(f).length;
   switch (id) {
     case 'context': {
-      const kinds = (['web', 'wiki', 'news', 'quake', 'market', 'data'] as const).map(k => [k, count(s.context, c => c.kind === k)] as const).filter(([, n]) => n > 0);
-      const name = { web: 'Articles', wiki: 'Background', news: 'Live feed', quake: 'Quakes', market: 'Markets', data: 'Your data' } as const;
+      const kinds = (['web', 'series', 'odds', 'wiki', 'news', 'social', 'quake', 'market', 'data'] as const).map(k => [k, count(s.context, c => c.kind === k)] as const).filter(([, n]) => n > 0);
+      const name = { web: 'Articles', series: 'Market data', odds: 'Prediction markets', wiki: 'Background', news: 'Live feed', social: 'Social posts', quake: 'Quakes', market: 'Market board', data: 'Your data' } as const;
       return [{ label: 'Sources', value: String(s.context.length) }, ...kinds.map(([k, n]) => ({ label: name[k], value: String(n) }))];
     }
     case 'graph': {
@@ -88,7 +88,8 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
         { label: 'Evidence', value: String(count(s.links, l => l.kind === 'evidence')) },
       ];
       const f = s.frame;
-      if (f?.kind === 'binary') out.push({ label: 'Base rate', value: pct(f.baseRate) });
+      if (f?.kind === 'binary') out.push({ label: s.quant ? 'Baseline' : 'Base rate', value: pct(f.baseRate) });
+      if (s.quant) out.push({ label: 'Price', value: `${s.quant.symbol} ${formatAmount(s.quant.price)}` });
       if (f?.kind === 'choice') out.push({ label: 'Outcomes', value: String(f.outcomes.length) });
       if (f?.kind === 'number' && f.anchor !== null) out.push({ label: 'Today', value: formatAmount(f.anchor) });
       return out;

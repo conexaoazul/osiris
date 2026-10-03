@@ -11,6 +11,7 @@ import { currentAnswer, latestPoints, type RunState } from '@/lib/oi/state';
 import { formatAmount, leader, outcomeColor, positionIn } from '@/lib/oi/forecast';
 import { KIND_LABEL, LABEL, T, fit, gold, pct, smooth } from './theme';
 import { Overline, PointTag, TextButton } from './atoms';
+import { ANCHOR } from './anchors';
 
 const PHASES: { id: RunState['phase']; label: string }[] = [
   { id: 'context', label: 'Research' },
@@ -196,6 +197,8 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
   } else if (frame) {
     const p = s.report?.probability ?? last?.consensus ?? null;
     if (p !== null) { value = p; sub = 'chance of YES'; }
+    // The prediction market on this same question, where there is one: the crowd's money beside the base rate.
+    const market = s.context.find(c => c.id === frame.market && c.odds)?.odds;
     detail = (
       <div>
         <div className="relative h-5">
@@ -203,11 +206,14 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
           {last && <motion.span className="absolute top-[7px] h-[6px] rounded-sm" initial={false} animate={{ left: `${last.min * 100}%`, width: `${Math.max(1, (last.max - last.min) * 100)}%` }} transition={{ duration: 0.7 }}
             style={{ background: gold(0.2), boxShadow: `inset 0 0 0 1px ${gold(0.4)}` }} title="The range across the worlds" />}
           <span className="absolute top-[5px] w-px h-[10px] bg-[var(--cyan-primary)]" style={{ left: `${frame.baseRate * 100}%` }} title={`Base rate ${pct(frame.baseRate)}`} />
+          {market && <span className="absolute top-[4px] w-[5px] h-[5px] -ml-[2.5px] rotate-45" style={{ left: `${market.probability * 100}%`, top: 7, background: ANCHOR.market }} title={`${market.platform} ${pct(market.probability)}`} />}
           {p !== null && <motion.span className="absolute top-[2px] w-[2px] h-4 -ml-px rounded-full" initial={false} animate={{ left: `${p * 100}%` }} transition={{ duration: 0.7, ease: 'easeOut' }}
             style={{ background: T.goldLight, boxShadow: `0 0 10px ${gold(0.8)}` }} />}
         </div>
         <div className="flex justify-between text-[9.5px] font-mono tracking-[0.14em] text-[var(--text-muted)]">
-          <span>NO</span><span>BASE RATE <span className="text-[var(--cyan-primary)]">{pct(frame.baseRate)}</span></span><span>YES</span>
+          <span>NO</span>
+          <span>{s.quant ? 'BASELINE' : 'BASE RATE'} <span className="text-[var(--cyan-primary)]">{pct(frame.baseRate)}</span>{market && <> · {market.platform.toUpperCase()} <span style={{ color: ANCHOR.market }}>{pct(market.probability)}</span></>}</span>
+          <span>YES</span>
         </div>
       </div>
     );

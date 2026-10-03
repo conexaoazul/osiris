@@ -16,6 +16,8 @@ import { FIELD, LABEL, T, ago, cyan, gold, pct, toneColor } from './theme';
 import { Avatar, Empty, Mentions, PointTag, STANCE, SectionTitle, Segmented, StanceTag, TypeIcon } from './atoms';
 import { ReportBody } from './report';
 import { PushTag, Quotes, SOURCE_KIND, SourceLink, sourceLabel } from './quotes';
+import { ANCHOR } from './anchors';
+import { priceText } from '@/lib/oi/quant';
 
 export type Tab = 'report' | 'sim' | 'actors' | 'world' | 'ask';
 
@@ -66,6 +68,9 @@ export function periodReached(s: RunState): number {
 export function pooledLabel(s: RunState, stat: RoundStat): string {
   if (s.frame?.kind === 'number' && stat.value) return `median ${formatAmount(stat.value.median)}`;
   if (s.frame?.kind === 'choice' && stat.shares) return `${s.frame.outcomes[leader(stat.shares)]} ${pct(Math.max(...stat.shares))}`;
+  // Every world has settled it: how they settled, not a probability.
+  const pts = s.points.filter(p => p.period === stat.round);
+  if (s.frame?.kind === 'binary' && pts.length && pts.every(p => p.resolved)) return `${pts.filter(p => p.resolved === 'yes').length} of ${pts.length} worlds YES`;
   return pct(stat.consensus);
 }
 
@@ -154,6 +159,7 @@ function WorldPeriod({ s, world, period, cast, showMoves, onToggle, selected, on
         {point ? <span className="ml-auto"><PointTag point={point} frame={s.frame} /></span>
           : deciding.length ? <span className="ml-auto inline-flex items-center gap-1.5 text-[9.5px] text-[var(--cyan-primary)]"><Loader2 className="w-3 h-3 animate-spin" />{deciding.length} deciding</span> : null}
       </div>
+      {point?.price && s.quant && <WorldPrice close={point.price.close} high={point.price.high} low={point.price.low} open={s.points.find(x => x.world === world && x.period === period.index - 1)?.price?.close ?? s.quant.price} symbol={s.quant.symbol} currency={s.quant.currency} level={s.frame?.measure?.threshold} />}
       {point?.note && <p className="text-[11px] leading-snug text-[var(--text-secondary)]"><Mentions text={point.note} s={s} onSelect={onSelect} /></p>}
       {events.length > 0 && (
         <div className="flex flex-col gap-1.5">
@@ -176,6 +182,21 @@ function WorldPeriod({ s, world, period, cast, showMoves, onToggle, selected, on
         </p>
       )}
     </div>
+  );
+}
+
+/** Where a world's price ended a period, how far it moved, its range in the period, and the level the question is about. */
+export function WorldPrice({ close, high, low, open, symbol, currency, level }: { close: number; high: number; low: number; open: number; symbol: string; currency: string; level?: number }) {
+  const change = open > 0 ? close / open - 1 : 0;
+  const up = change >= 0;
+  return (
+    <p className="flex items-center gap-2 flex-wrap text-[10px] font-mono tabular-nums text-[var(--text-muted)]">
+      <span className="text-[var(--text-secondary)]">{symbol}</span>
+      <span className="text-[11px] text-[var(--text-heading)]">{priceText(close, currency)}</span>
+      <span style={{ color: up ? T.support : T.oppose }}>{up ? '▲' : '▼'} {Math.abs(Math.round(change * 1000) / 10)}%</span>
+      <span>range {priceText(low, currency)}–{priceText(high, currency)}</span>
+      {level !== undefined && <span style={{ color: (level >= open ? high >= level : low <= level) ? T.goldLight : undefined }}>level {priceText(level, currency)}</span>}
+    </p>
   );
 }
 
@@ -369,11 +390,13 @@ export function ContextList({ s, selected, onSelect }: { s: RunState; selected: 
         return (
           <div key={c.id} className="flex items-start gap-1">
             <Row on={selected === key} onClick={() => onSelect(selected === key ? null : key)}>
-              <span className="self-start mt-[6px] w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: used ? T.cyan : 'var(--text-muted)', boxShadow: used ? `0 0 6px ${cyan(0.8)}` : undefined }} />
+              <span className="self-start mt-[6px] w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: c.kind === 'social' ? T.orange : used ? T.cyan : 'var(--text-muted)', boxShadow: used ? `0 0 6px ${c.kind === 'social' ? T.orange : cyan(0.8)}` : undefined }} />
               <span className="min-w-0 flex-1">
                 <span className="block text-[11px] leading-snug text-[var(--text-primary)]">{c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title}</span>
                 <span className="block mt-0.5 text-[9px] font-mono tracking-[0.08em] truncate text-[var(--text-muted)]">{[`[${c.id}]`, SOURCE_KIND[c.kind], sourceLabel(c, c.id), ago(c.published)].filter(Boolean).join(' · ')}</span>
               </span>
+              {c.kind === 'odds' && c.odds && <span className="self-start mt-px text-[10px] font-mono tabular-nums whitespace-nowrap" style={{ color: ANCHOR.market }} title={`${c.odds.platform} prices YES at ${pct(c.odds.probability)}`}>{pct(c.odds.probability)}</span>}
+              {c.kind === 'social' && <span className={`self-start mt-px ${LABEL} !text-[7.5px]`} style={{ color: T.orange }} title="A post on a social network: an unverified claim, not reporting">Social</span>}
               {n > 0 && <span className="self-start mt-px text-[9px] font-mono tabular-nums whitespace-nowrap" style={{ color: T.cyan }} title={`Quoted ${n} time${n === 1 ? '' : 's'}`}>{n}×</span>}
             </Row>
             <SourceLink url={c.url} className="mt-2 ml-1 flex-shrink-0" />

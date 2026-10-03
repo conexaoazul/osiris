@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderId } from './providers';
 import { applyEvent, currentAnswer, currentProbability, initialState, type RunState } from './state';
-import { directionWord } from './forecast';
+import { directionWord, formatAmount } from './forecast';
 import { questionBlock, trajectoryLine } from './prompts';
 import type { Citation, Depth, RunStatus, Stamped } from './types';
 import type { SeedScope } from './depths';
@@ -315,6 +315,17 @@ export function toMarkdown(s: RunState, url: string): string {
   if (r) {
     lines.push('', `## Prediction: ${r.answer} (${r.confidence} confidence)`, r.deviation, '', r.summary);
     const actorName = (id: string) => s.actors.find(a => a.id === id)?.name ?? id;
+    const anchors: string[] = [];
+    const q = s.quant;
+    if (q) {
+      anchors.push(`- **${q.symbol}** at ${formatAmount(q.price)} ${q.currency} on ${q.asOf}, swinging ${Math.round(q.vol * 100)}% a year`);
+      anchors.push(q.probability !== undefined ? `- **Statistical baseline**: ${pct(q.probability)}. ${q.method}` : `- **Statistical baseline**: 80% between ${formatAmount(q.p10)} and ${formatAmount(q.p90)}, the middle at ${formatAmount(q.p50)}. ${q.method}`);
+      if (q.simulated) anchors.push(q.simulated.probability !== undefined ? `- **The simulation, priced** (each world's events across the market's own paths): ${pct(q.simulated.probability)}` : `- **The simulation, priced**: 80% between ${formatAmount(q.simulated.p10)} and ${formatAmount(q.simulated.p90)}, the middle at ${formatAmount(q.simulated.p50)}`);
+    }
+    for (const c of s.context.filter(x => x.kind === 'odds' && x.odds)) {
+      anchors.push(`- **${c.odds!.platform}${c.id === s.frame?.market ? ' (this question)' : ' (related)'}**: [${c.title.replace(/[[\]]/g, '')}](${c.url}) ${pct(c.odds!.probability)}`);
+    }
+    if (anchors.length) lines.push('', '## What it rests on', ...anchors);
     if (r.path.length) lines.push('', '## How it unfolds', ...r.path.map(p => `- **${p.date || 'Later'}**: ${p.title}${p.detail ? `. ${p.detail}` : ''}${p.actors.length ? ` (${p.actors.map(actorName).join(', ')})` : ''}`));
     if (r.actorMoves.length) lines.push('', '## What each actor does', ...r.actorMoves.map(m => `- **${actorName(m.actor)}**: ${m.prediction}`));
     if (r.worlds.length) lines.push('', '## The simulated worlds', ...r.worlds.map(w => `- **World ${w.world}**: ${w.outcome}. ${w.summary}`));

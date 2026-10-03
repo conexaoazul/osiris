@@ -302,6 +302,18 @@ export function runSummary(run: Run, origin: string) {
     base_rate_pct: s.frame?.kind === 'binary' ? pct(s.frame.baseRate) : undefined,
     prior_pct: s.frame?.kind === 'choice' ? s.frame.prior.map(p => pct(p)) : undefined,
     anchor: s.frame?.kind === 'number' ? s.frame.anchor : undefined,
+    // What the prediction rests on besides the simulation: the price's own history, and the prediction market on the same question.
+    measure: s.frame?.measure ?? undefined,
+    baseline: s.quant ? {
+      symbol: s.quant.symbol, price: s.quant.price, as_of: s.quant.asOf, volatility_pct: pct(s.quant.vol), horizon_days: s.quant.days,
+      probability_pct: s.quant.probability !== undefined ? pct(s.quant.probability) : undefined,
+      p10: s.quant.p10, p50: s.quant.p50, p90: s.quant.p90, method: s.quant.method,
+      simulated: s.quant.simulated ? {
+        probability_pct: s.quant.simulated.probability !== undefined ? pct(s.quant.simulated.probability) : undefined,
+        p10: s.quant.simulated.p10, p50: s.quant.simulated.p50, p90: s.quant.simulated.p90,
+      } : undefined,
+    } : undefined,
+    market: s.frame?.market ?? undefined,
     progress: {
       periods_done: s.rounds.length,
       periods_planned: s.periodsPlanned,
@@ -343,6 +355,8 @@ export function runSummary(run: Run, origin: string) {
     // What the actors and the report quoted: the ids in drivers' `sources` and moves' `quotes` point here.
     sources: s.context.map(c => ({
       id: c.id, kind: c.kind, title: c.title, source: c.source, url: c.url, excerpt: c.excerpt, place: c.place || undefined, published: c.published || undefined,
+      ...(c.odds ? { odds: { platform: c.odds.platform, probability_pct: pct(c.odds.probability), volume: c.odds.volume, closes: c.odds.closes || undefined } } : {}),
+      ...(c.symbol ? { symbol: c.symbol } : {}),
       quoted: s.links.filter(l => l.kind === 'cite' && l.to === `c:${c.id}`).length,
     })),
     // Each world as it stands: its figure, how it ended, and its events in date order.

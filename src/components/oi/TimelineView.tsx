@@ -14,6 +14,7 @@ import { formatAmount } from '@/lib/oi/forecast';
 import { timelineOf, type Timeline, type TimelineCell, type TimelineLane } from '@/lib/oi/timeline';
 import { castOf, type RunState } from '@/lib/oi/state';
 import { LABEL, SOLID, T, cyan, fit, gold, smooth } from './theme';
+import { priceText } from '@/lib/oi/quant';
 import { Empty, TypeIcon } from './atoms';
 
 const NAME_COL = 196;
@@ -184,6 +185,9 @@ function LaneRow({ s, lane, tl, cols, template, win, selected, onSelect }: {
               <span className="relative mt-1.5 block h-[2px] rounded-full bg-white/[0.07]">
                 <span className="absolute top-1/2 w-[7px] h-[7px] -ml-[3.5px] -mt-[3.5px] rounded-full" style={{ left: `${at(cell.value)}%`, background: on ? T.cyan : T.text, boxShadow: on ? `0 0 6px ${cyan(0.8)}` : undefined }} />
               </span>
+              {cell.point.price && s.quant && s.frame?.kind !== 'number' && (
+                <span className="mt-1 block text-[9px] font-mono tabular-nums text-[var(--text-muted)]">{s.quant.symbol} {priceText(cell.point.price.close, s.quant.currency)}</span>
+              )}
             </button>
             {cell.events.slice(0, 3).map(e => {
               const key = `e:${e.id}`;

@@ -14,6 +14,7 @@ import { latestPoints, worldName, type RunState } from '@/lib/oi/state';
 import { LABEL, T, cyan, gold, leanTo, pct } from './theme';
 import { Avatar, Mentions, Overline, PointTag, SectionTitle, TextButton, TypeIcon } from './atoms';
 import { PushTag, SourceLink, sourceLabel } from './quotes';
+import { Anchors } from './anchors';
 import { evidenceLedger } from '@/lib/oi/sources';
 
 export function ReportBody({ s, runId, selected, onSelect }: { s: RunState; runId: string | null; selected: string | null; onSelect: (k: string | null) => void }) {
@@ -57,6 +58,8 @@ export function ReportBody({ s, runId, selected, onSelect }: { s: RunState; runI
         {r.deviation && <p className="mt-2 text-[11px] italic leading-relaxed text-[var(--text-muted)]">{r.deviation}</p>}
         <p className="mt-2.5 text-[11.5px] leading-[1.65] text-[var(--text-secondary)]"><Mentions text={r.summary} s={s} onSelect={onSelect} /></p>
       </div>
+
+      <Anchors s={s} selected={selected} onSelect={onSelect} />
 
       {r.path.length > 0 && (
         <div>
