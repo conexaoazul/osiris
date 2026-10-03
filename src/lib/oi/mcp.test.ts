@@ -49,7 +49,7 @@ describe('the protocol', () => {
 });
 
 describe('the tools', () => {
-  it('forecasts, waits, and hands back the run, its token and a link to watch it', async () => {
+  it('predicts, waits, and hands back the run, its token and a link to watch it', async () => {
     const progress: string[] = [];
     const r = await handleMessage(call('oi_predict', { question: 'Will the envoys sign a deal by year end?', depth: 'quick', use_live_feeds: false }),
       ctx({ progress: (_p, _t, m) => progress.push(m) }));
@@ -59,7 +59,9 @@ describe('the tools', () => {
     expect(result.content[0].text).toMatch(/Watch it on the globe: https:\/\/osirisai\.live\/\?oi=/);
     expect(typeof result.structuredContent.run_token).toBe('string');
     expect(progress[0]).toMatch(/^Run [0-9a-f-]{36} started/);
-    expect(progress.some(m => /Round 2 of 2/.test(m))).toBe(true);
+    // Progress follows the simulated clock, period by period.
+    expect(progress.some(m => /the actors move in 2 worlds/.test(m))).toBe(true);
+    expect((result.structuredContent.report as { path: unknown[] }).path.length).toBeGreaterThan(0);
     expect(JSON.stringify(result)).not.toContain('sk-test');
   });
 
@@ -75,9 +77,10 @@ describe('the tools', () => {
     const run = (started?.result as { structuredContent: { id: string; run_token: string } }).structuredContent;
     expect(getRun(run.id)).toBeDefined();
 
-    const got = await handleMessage(call('oi_get_run', { run_id: run.id, include_posts: true }), ctx());
-    const data = (got?.result as { structuredContent: { posts: unknown[]; run_token?: string } }).structuredContent;
-    expect(data.posts.length).toBeGreaterThan(0);
+    const got = await handleMessage(call('oi_get_run', { run_id: run.id, include_moves: true }), ctx());
+    const data = (got?.result as { structuredContent: { moves: { world: string; actor: string }[]; worlds: unknown[]; run_token?: string } }).structuredContent;
+    expect(data.moves.length).toBeGreaterThan(0);
+    expect(data.worlds).toHaveLength(2);
     expect(data.run_token).toBeUndefined();
 
     const asked = await handleMessage(call('oi_ask', { run_id: run.id, message: 'Why?' }), ctx());

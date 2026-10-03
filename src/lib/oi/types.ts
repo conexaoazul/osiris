@@ -1,6 +1,13 @@
 /**
  * OSIRIS OI: the types the engine, the API, the MCP server and the panel share.
  *
+ * OI is a prediction engine. It researches a question, maps the world that
+ * decides it, casts the actors that shape the outcome as agents, and lets
+ * them act against each other over simulated time (dated periods from today
+ * to the question's horizon) in several parallel worlds. A world engine turns
+ * each period's moves into what actually happens. The prediction is the
+ * story the worlds tell, with the probability their outcomes add up to.
+ *
  * A run is a stream of events. Everything a viewer sees (the panel, the arcs on
  * the globe, the API snapshot, an MCP tool result) is folded out of the same
  * events by `applyEvent` in ./state, so the views cannot disagree.
@@ -76,7 +83,7 @@ export interface ContextItem extends Located {
   published: string;
   /** Where it was published, to open and check. Only http(s). */
   url?: string;
-  /** What it says that bears on the question, as the panel read it. */
+  /** What it says that bears on the question, as the actors read it. */
   excerpt?: string;
 }
 
@@ -90,27 +97,95 @@ export interface Actor extends Located {
   role: string;
   /** −1 pushes toward NO, +1 toward YES. */
   lean: number;
+  /** Set when the actor plays in the simulation. */
+  persona?: Persona;
 }
 
-/** A simulated forecaster on the panel. Fictional people, real places. */
-export interface Agent extends Located {
+/** Who an actor is when it plays in the simulation: what it wants, what it can do, what it will not accept. */
+export interface Persona {
+  goal: string;
+  /** The concrete things it can do. */
+  levers: string[];
+  redLines: string;
+  /** How it decides. */
+  style: string;
+}
+
+/** A stretch of simulated time: the simulation moves one period at a time, from today to the horizon. */
+export interface Period {
+  /** 1-based. */
+  index: number;
+  /** "3 Oct – 2 Nov 2026" */
+  label: string;
+  /** ISO dates, inclusive. */
+  start: string;
+  end: string;
+}
+
+/** What an actor does in one period of one world. */
+export interface Move {
+  /** `<world>:<actor>:<period>` */
   id: string;
-  name: string;
-  role: string;
-  /** How they reason. */
-  lens: string;
-  bias: string;
-  prior: number;
-  /** Actor ids they follow. */
-  watches: string[];
+  world: string;
+  period: number;
+  actor: string;
+  /** What it does, concretely. */
+  action: string;
+  /** What it says in public, or ''. */
+  statement: string;
+  /** The actors it is aimed at. */
+  targets: string[];
+  /** Toward its targets. */
+  stance: 'cooperate' | 'pressure' | 'oppose' | 'hold';
+  /** Which way it pushes the question: toward YES (or higher), NO (or lower), or neither. */
+  push: 'yes' | 'no' | 'neutral';
+  /** choice: the outcome it helps. */
+  favors?: string;
+  /** Its private reasoning, in a line. */
+  why: string;
+  /** What it quoted from the sources, when they shaped the move. */
+  cites?: Citation[];
+}
+
+/** Something that happened in a simulated world: the result of the actors' moves, a surprise, or an injected event. */
+export interface SimEvent extends Located {
+  /** `<world>:<period>:<n>` */
+  id: string;
+  world: string;
+  period: number;
+  /** ISO date within the period. */
+  date: string;
+  title: string;
+  detail: string;
+  actors: string[];
+  push: 'yes' | 'no' | 'neutral';
+  favors?: string;
+  kind: 'event' | 'shock' | 'injected';
+}
+
+/** Where the question stands in one world at the end of a period. */
+export interface WorldPoint {
+  world: string;
+  period: number;
+  /** binary: P(YES) by the horizon as this world stands. choice: the leader's share. number: unused, 0.5. */
+  probability: number;
+  /** choice: the share of every outcome. */
+  shares?: number[];
+  /** number: the quantity's value now, in this world. */
+  value?: number;
+  /** The question has resolved in this world: 'yes', 'no', or the winning outcome. */
+  resolved: string | null;
+  /** Where things stand, in a line. */
+  note: string;
 }
 
 /**
  * An arc. Node keys are prefixed by what they point at:
- * `a:` an actor, `g:` an agent, `c:` a context item, `r:report` the report.
- * A `cite` runs from a panelist (or the report) to the source it quotes.
+ * `a:` an actor, `c:` a source, `r:report` the report.
+ * A `move` runs from an actor to the actor its move was aimed at; a
+ * `cite` from an actor (or the report) to the source it quotes.
  */
-export type LinkKind = 'relation' | 'evidence' | 'reply' | 'focus' | 'cite';
+export type LinkKind = 'relation' | 'evidence' | 'move' | 'cite';
 export type Tone = 'support' | 'oppose' | 'neutral';
 
 export interface Link {
@@ -126,20 +201,14 @@ export interface Link {
   round: number;
 }
 
-export interface Reply {
-  to: string;
-  stance: 'agree' | 'disagree' | 'question';
-  point: string;
-}
-
-/** Words a panelist quoted, the source they came from, and what they did to the panelist's forecast. */
+/** Words an actor quoted, the source they came from, and which way they pushed its move. */
 export interface Citation {
   /** The source's id: an article (w2), background (b1), a feed item (c3), a passage of the asker's data (d2), or `data`. */
   source: string;
   quote: string;
   /** The words were found in the source as quoted. */
   exact: boolean;
-  /** Which way it moved the panelist: toward YES (or higher), toward NO (or lower), or context only. */
+  /** Which way it pushed the actor: toward YES (or higher), toward NO (or lower), or context only. */
   push?: 'yes' | 'no' | 'neutral';
   /** choice: the outcome it helps. */
   favors?: string;
@@ -147,41 +216,21 @@ export interface Citation {
   why?: string;
 }
 
-/** One agent's turn in one round. */
-export interface Post {
-  id: string;
-  agent: string;
-  round: number;
-  /** binary: P(YES). choice: the share given to their leading pick. number: 0.5, unused. */
-  probability: number;
-  /** choice: their share for each outcome, in the frame's order, summing to 1. */
-  shares?: number[];
-  /** number: their estimate and 80% range. */
-  estimate?: Estimate;
-  confidence: number;
-  text: string;
-  reasoning: string;
-  changed: string;
-  replies: Reply[];
-  focus: string[];
-  /** What the post quotes, by source. Missing from runs made before quoting. */
-  cites?: Citation[];
-}
-
 /**
- * Where the panel stood at the end of a round. The scalar fields describe a
- * binary question's P(YES), and a choice question's share for its leader;
- * a number question carries its figures in `value`.
+ * Where the worlds stood together at the end of a period. The scalar fields
+ * describe a binary question's P(YES), and a choice question's share for its
+ * leader; a number question carries its figures in `value`.
  */
 export interface RoundStat {
+  /** The period. */
   round: number;
-  /** binary: the confidence-weighted pool of the panel's log-odds. choice: the leader's pooled share. */
+  /** binary: the pool of the worlds' P(YES). choice: the leader's pooled share. */
   consensus: number;
   /** choice: the pooled share of every outcome, summing to 1. */
   shares?: number[];
-  /** choice: how many panelists put each outcome first. */
+  /** choice: how many worlds put each outcome first. */
   votes?: number[];
-  /** number: the panel's estimates. low and high are the medians of the panelists' own ranges. */
+  /** number: the worlds' values. */
   value?: { median: number; p25: number; p75: number; min: number; max: number; low: number; high: number };
   median: number;
   mean: number;
@@ -222,13 +271,21 @@ export interface Signpost extends Located {
   favors: string;
 }
 
+/** One dated step of the predicted path. */
+export interface PathStep {
+  date: string;
+  title: string;
+  detail: string;
+  actors: string[];
+}
+
 export interface Report {
   headline: string;
   /** The answer in a phrase: "62% YES", "Lula (45%)", "86.4 USD per barrel (80–92)". */
   answer: string;
   /** binary: the calibrated P(YES). choice: the leader's calibrated share. number: 0.5, unused. */
   probability: number;
-  /** The panel's own figure after the last round, on the same footing as `probability`. */
+  /** The simulation's own figure (the worlds pooled), on the same footing as `probability`. */
   swarm: number;
   /** choice: the calibrated share of every outcome. */
   shares?: number[];
@@ -241,8 +298,14 @@ export interface Report {
   signposts: Signpost[];
   dissent: string;
   caveats: string[];
-  /** Why the report moved away from the panel, when it did. */
+  /** Why the report moved away from the simulation, when it did. */
   deviation: string;
+  /** The predicted path: how it most likely unfolds, date by date. */
+  path: PathStep[];
+  /** What each actor is predicted to do. */
+  actorMoves: { actor: string; prediction: string }[];
+  /** How each world ended. */
+  worlds: { world: string; outcome: string; summary: string }[];
 }
 
 export interface Usage {
@@ -252,15 +315,18 @@ export interface Usage {
 }
 
 export type OiEvent =
-  | { t: 'start'; question: string; depth: Depth; provider: string; model: string; agents: number; rounds: number }
+  | { t: 'start'; question: string; depth: Depth; provider: string; model: string; actors: number; periods: number; worlds: number }
   | { t: 'phase'; phase: Phase; label: string }
   | { t: 'context'; items: ContextItem[] }
   | { t: 'frame'; frame: Frame }
   | { t: 'actor'; actor: Actor }
   | { t: 'link'; link: Link }
-  | { t: 'agent'; agent: Agent }
-  | { t: 'thinking'; agent: string; round: number }
-  | { t: 'post'; post: Post }
+  | { t: 'cast'; actor: string; persona: Persona }
+  | { t: 'clock'; periods: Period[]; worlds: string[] }
+  | { t: 'thinking'; world: string; actor: string; period: number }
+  | { t: 'move'; move: Move }
+  | { t: 'event'; event: SimEvent }
+  | { t: 'point'; point: WorldPoint }
   | { t: 'round'; stat: RoundStat }
   | { t: 'inject'; text: string; round: number }
   | { t: 'report'; report: Report }

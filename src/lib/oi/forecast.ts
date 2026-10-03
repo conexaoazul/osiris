@@ -3,7 +3,7 @@
  * Pure and browser-safe: the engine, the API summary and the panel all speak
  * through these, so a number is never formatted two ways.
  */
-import type { Estimate, Frame, Post, Report, RoundStat } from './types';
+import type { Estimate, Frame, Report, RoundStat, WorldPoint } from './types';
 
 /** Outcome colours for a choice question: OI's violet and magenta first, then hues that stay distinct beside them. */
 export const OUTCOME_COLORS = ['#B388FF', '#FF5CCB', '#6E8BFF', '#6FE3C1', '#FFB86B', '#E3DDF2'];
@@ -67,17 +67,15 @@ export function formatAmount(n: number): string {
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 
-/** A short read of one panelist's turn: "62%", "Lula 45%", "86.4 (80–92)". */
-export function postView(post: Post, frame: Frame | null): string {
-  if (frame?.kind === 'choice' && post.shares) {
-    const i = leader(post.shares);
-    return `${frame.outcomes[i] ?? '?'} ${pct(post.shares[i])}`;
+/** A short read of where one world stands: "62%", "Lula 45%", "86.4", or how it resolved: "YES", "Lula". */
+export function pointView(p: WorldPoint, frame: Frame | null): string {
+  if (p.resolved) return frame?.kind === 'choice' ? p.resolved : p.resolved.toUpperCase();
+  if (frame?.kind === 'choice' && p.shares) {
+    const i = leader(p.shares);
+    return `${frame.outcomes[i] ?? '?'} ${pct(p.shares[i])}`;
   }
-  if (frame?.kind === 'number' && post.estimate) {
-    const e = post.estimate;
-    return `${formatAmount(e.value)} (${formatAmount(e.low)}–${formatAmount(e.high)})`;
-  }
-  return pct(post.probability);
+  if (frame?.kind === 'number') return p.value !== undefined ? formatAmount(p.value) : '—';
+  return pct(p.probability);
 }
 
 /** The answer in a phrase, from a report or from the last round's pool. */
@@ -125,8 +123,8 @@ export function directionWord(frame: Frame | null, push: 'yes' | 'no', favors: s
 }
 
 /**
- * Where an estimate sits in the spread of the panel, 0 (lowest) to 1
- * (highest): how the globe colours a panelist on a number question.
+ * Where a value sits in a spread, 0 (lowest) to 1 (highest): how the
+ * globe and the timeline colour a world on a number question.
  */
 export function positionIn(value: number, lo: number, hi: number): number {
   if (!Number.isFinite(value) || !(hi > lo)) return 0.5;

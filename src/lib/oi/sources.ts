@@ -1,15 +1,15 @@
 /**
- * OSIRIS OI: what the panel quotes, and where it came from.
+ * OSIRIS OI: what the actors quote, and where it came from.
  *
- * Every panelist backs each post with quotes from numbered sources: a news
+ * The actors ground their moves in quotes from numbered sources: a news
  * article the research found (`w2`), background (`b1`), an item of the live
  * feed (`c3`), a passage the world model lifted from the asker's own data
- * (`d2`), or, when the whole panel reads it, that data itself (`data`). Each
- * quote says which way it moved the panelist's forecast and why, so the
- * figure is attributed to the evidence behind it. A quote is checked against
- * what its source says here and marked exact when its words are really
- * there, so a reader following the thread from the report to a panelist to
- * a source, and on to the published page, can trust every step. Pure and
+ * (`d2`), or, when the whole simulation reads it, that data itself (`data`).
+ * Each quote says which way it pushed the actor and why, so a move is
+ * attributed to the evidence behind it. A quote is checked against what its
+ * source says here and marked exact when its words are really there, so a
+ * reader following the thread from the prediction to an actor's move to a
+ * source, and on to the published page, can trust every step. Pure and
  * client-safe.
  */
 import type { Citation, ContextItem } from './types';
@@ -19,7 +19,7 @@ const list = (v: unknown, max: number): unknown[] => (Array.isArray(v) ? v.slice
 const text = (v: unknown, max: number): string =>
   typeof v === 'string' || typeof v === 'number' ? String(v).replace(/[\s\u0000-\u001f]+/g, ' ').trim().slice(0, max) : '';
 
-/** The id of the asker's data as a whole, citable when the whole panel reads it. */
+/** The id of the asker's data as a whole, citable when the whole simulation reads it. */
 export const DATA_ID = 'data';
 
 /** Text reduced to its words: case, accents, punctuation and spacing ignored. */
@@ -55,7 +55,7 @@ function sections(seed: string): { name: string; body: string }[] {
 
 /**
  * The passages the world model quoted from the asker's data, as sources the
- * panel can cite: `d1`, `d2`… in the model's own order (so its evidence can
+ * actors can cite: `d1`, `d2`… in the model's own order (so its evidence can
  * point at them), keeping only those really in the data, each under the
  * file it came from.
  */
@@ -83,7 +83,7 @@ export function dataExcerpts(raw: unknown, seed: string, max = 8): ContextItem[]
   return out;
 }
 
-/** The asker's data as one source, for the panel that reads it whole. */
+/** The asker's data as one source, for the simulation that reads it whole. */
 export function wholeData(seed: string): ContextItem {
   const names = sections(seed).map(p => p.name).filter(n => n && n !== 'Notes');
   return { id: DATA_ID, kind: 'data', title: 'Your data', source: names.length ? names.join(', ') : 'Pasted by you', published: '', place: '', lat: null, lng: null };
@@ -91,8 +91,8 @@ export function wholeData(seed: string): ContextItem {
 
 /**
  * What each citable source says, to check quotes against: a feed item's
- * headline (and its outlet, which a panelist may name), a data passage, and
- * the head of the data itself when the whole panel reads it.
+ * headline (and its outlet, which an actor may name), a data passage, and
+ * the head of the data itself when the whole simulation reads it.
  */
 export function sourceTexts(items: ContextItem[], panelData = ''): Map<string, string> {
   const out = new Map<string, string>();
@@ -153,8 +153,8 @@ export interface LedgerRow {
   source: string;
   /** Times quoted, across every round. */
   quoted: number;
-  /** The panelists who quoted it. */
-  agents: string[];
+  /** The actors who quoted it. */
+  actors: string[];
   /** Which way it pushed them, quote by quote. */
   yes: number;
   no: number;
@@ -166,22 +166,22 @@ export interface LedgerRow {
 }
 
 /**
- * The evidence behind the panel, source by source: how often each was
+ * The evidence behind the simulation, source by source: how often each was
  * quoted, by whom, and which way it pushed them. Most quoted first. It is
- * what lets a reader attribute the panel's number to its evidence.
+ * what lets a reader attribute the prediction to its evidence.
  */
-export function evidenceLedger(posts: { agent: string; cites?: Citation[] }[]): LedgerRow[] {
+export function evidenceLedger(moves: { actor: string; cites?: Citation[] }[]): LedgerRow[] {
   const rows = new Map<string, LedgerRow>();
-  for (const p of posts) {
+  for (const p of moves) {
     for (const c of p.cites ?? []) {
-      const r = rows.get(c.source) ?? { source: c.source, quoted: 0, agents: [], yes: 0, no: 0, neutral: 0, favors: {}, exact: 0 };
+      const r = rows.get(c.source) ?? { source: c.source, quoted: 0, actors: [], yes: 0, no: 0, neutral: 0, favors: {}, exact: 0 };
       r.quoted++;
-      if (!r.agents.includes(p.agent)) r.agents.push(p.agent);
+      if (!r.actors.includes(p.actor)) r.actors.push(p.actor);
       r[c.push ?? 'neutral']++;
       if (c.favors) r.favors[c.favors] = (r.favors[c.favors] ?? 0) + 1;
       if (c.exact) r.exact++;
       rows.set(c.source, r);
     }
   }
-  return [...rows.values()].sort((a, b) => b.quoted - a.quoted || b.agents.length - a.agents.length || a.source.localeCompare(b.source));
+  return [...rows.values()].sort((a, b) => b.quoted - a.quoted || b.actors.length - a.actors.length || a.source.localeCompare(b.source));
 }

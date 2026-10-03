@@ -3,31 +3,34 @@
  *
  * The globe puts every piece of the run where it happens, which also means
  * half of it is round the back of the planet and much of it sits on top of
- * itself in Europe. The graph lets go of geography: every actor, panelist and
- * cited source is a node, every relation, exchange, weighing and citation an
+ * itself in Europe. The graph lets go of geography: every actor and cited
+ * source is a node, every relation, piece of evidence, move and quote an
  * edge, laid out by a small force simulation so nothing hides behind
- * anything else. Every quote is a thread from the panelist to its source, and
- * the report joins at the end with a thread to each source its drivers rest
- * on, so a reader can follow any conclusion back to the words it came from.
+ * anything else. The actors cast to play stand out; each of their moves is an
+ * edge to the actor it was aimed at, in every world it was made; each quote a
+ * thread from the actor to its source; and the report joins at the end with
+ * a thread to each source its drivers rest on, so a reader can follow any
+ * conclusion back to the words it came from.
  *
  * The layout starts from the map (a node is seeded where it sits on an
  * equirectangular world), so the graph's first frame reads like the globe it
  * came from before the forces untangle it. Everything here is pure and
  * client-safe; the workspace's GraphView draws it.
  */
-import { agentLabel } from './objects';
 import type { RunState } from './state';
 import type { LinkKind, Tone } from './types';
 
 /** The report's node: the end of every thread. */
 export const REPORT_KEY = 'r:report';
 
-export type GraphNodeKind = 'actor' | 'agent' | 'evidence' | 'report';
+export type GraphNodeKind = 'actor' | 'evidence' | 'report';
 
 export interface GraphNode {
-  /** The research key: `a:`, `g:` or `c:` and the id, or `r:report`. */
+  /** The research key: `a:` or `c:` and the id, or `r:report`. */
   key: string;
   kind: GraphNodeKind;
+  /** An actor cast to play in the simulation. */
+  cast?: boolean;
   /** The actor's kind or the source's (state, company, news, quake…): what its icon is drawn from. */
   subtype: string;
   label: string;
@@ -70,12 +73,11 @@ export interface GraphFilter {
 /** The run as nodes and edges. A source that nothing cites stays off the graph: it would only drift. */
 export function buildGraph(s: RunState, filter: GraphFilter = {}): Graph {
   const nodes = new Map<string, GraphNode>();
-  const add = (key: string, kind: GraphNodeKind, subtype: string, label: string, lat: number | null, lng: number | null) => {
+  const add = (key: string, kind: GraphNodeKind, subtype: string, label: string, lat: number | null, lng: number | null, cast = false) => {
     if (filter.hideNodes?.has(kind) || (filter.only && !filter.only.has(key))) return;
-    nodes.set(key, { key, kind, subtype, label, degree: 0, radius: 0, lat, lng });
+    nodes.set(key, { key, kind, subtype, label, degree: 0, radius: 0, lat, lng, ...(cast ? { cast } : {}) });
   };
-  for (const a of s.actors) add(`a:${a.id}`, 'actor', a.kind, a.name, a.lat, a.lng);
-  for (const a of s.agents) add(`g:${a.id}`, 'agent', 'panelist', agentLabel(a), a.lat, a.lng);
+  for (const a of s.actors) add(`a:${a.id}`, 'actor', a.kind, a.name, a.lat, a.lng, Boolean(a.persona));
   const cited = new Set(s.links.filter(l => l.from.startsWith('c:') || l.to.startsWith('c:')).flatMap(l => [l.from, l.to]));
   for (const c of s.context) if (cited.has(`c:${c.id}`)) add(`c:${c.id}`, 'evidence', c.kind, c.title, c.lat, c.lng);
   if (s.report && s.links.some(l => l.from === REPORT_KEY)) add(REPORT_KEY, 'report', 'report', 'Report', null, null);
@@ -101,8 +103,7 @@ export function buildGraph(s: RunState, filter: GraphFilter = {}): Graph {
 /** Big enough to carry the node's icon; hubs a little bigger. */
 function radiusOf(n: GraphNode): number {
   if (n.kind === 'report') return 15;
-  if (n.kind === 'actor') return 12 + Math.min(6, n.degree * 0.5);
-  if (n.kind === 'agent') return 11;
+  if (n.kind === 'actor') return (n.cast ? 14 : 11) + Math.min(5, n.degree * 0.3);
   return 8.5;
 }
 
@@ -118,11 +119,11 @@ export interface Body {
   fy: number | null;
 }
 
-/** Force: the network finds its own shape. Flow: sources, then the world, the panel and the report, left to right. */
+/** Force: the network finds its own shape. Flow: the sources, then the actors, then the report, left to right. */
 export type LayoutMode = 'force' | 'flow';
 
 /** Where each kind of node settles across in the flow layout. */
-export const FLOW_X: Record<GraphNodeKind, number> = { evidence: -260, actor: 0, agent: 260, report: 470 };
+export const FLOW_X: Record<GraphNodeKind, number> = { evidence: -300, actor: 0, report: 300 };
 
 export interface Layout {
   bodies: Map<string, Body>;
@@ -159,9 +160,9 @@ function hash(s: string): number {
 }
 
 /** How far apart linked nodes like to sit, by what links them. */
-const DISTANCE: Record<LinkKind, number> = { relation: 150, focus: 125, reply: 115, evidence: 85, cite: 140 };
+const DISTANCE: Record<LinkKind, number> = { relation: 150, move: 135, evidence: 85, cite: 140 };
 /** How hard each kind of node pushes the others away. */
-const CHARGE: Record<GraphNodeKind, number> = { actor: -620, agent: -420, evidence: -160, report: -700 };
+const CHARGE: Record<GraphNodeKind, number> = { actor: -620, evidence: -160, report: -700 };
 
 export function createLayout(): Layout {
   const bodies = new Map<string, Body>();

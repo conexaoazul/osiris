@@ -1,9 +1,9 @@
 /**
- * Pooling the panel. The consensus is a confidence-weighted mean of the
- * agents' log-odds (a geometric pool of odds), which listens to a confident
- * minority more than a plain average does and never lands outside the range
- * the panel gave. The median and quartiles are reported beside it so a split
- * panel reads as split.
+ * Pooling the simulated worlds. The consensus is a weighted mean of the
+ * worlds' log-odds (a geometric pool of odds), which listens to a world that
+ * has all but settled the question more than a plain average does and never
+ * lands outside the range the worlds gave. The median and quartiles are
+ * reported beside it so worlds that split read as split.
  */
 import type { RoundStat } from './types';
 
@@ -66,7 +66,7 @@ export function roundStatFor(
     const lead = shares.reduce((b, v, i) => (v > shares[b] ? i : b), 0);
     const votes = new Array(outcomes).fill(0);
     for (const v of views) votes[v.shares.reduce((b, x, i) => (x > v.shares[b] ? i : b), 0)]++;
-    // The scalar fields follow the leader: how much of the panel's weight it holds, and how unevenly.
+    // The scalar fields follow the leader: how much of the worlds' weight it holds, and how unevenly.
     const base = roundStat(round, views.map(v => ({ probability: v.shares[lead], confidence: v.confidence })));
     return { ...base, consensus: shares[lead], shares, votes };
   }

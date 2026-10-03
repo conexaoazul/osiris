@@ -3,8 +3,10 @@
  *
  * While a run thinks, its analysis draws itself on the map: the actors land
  * where they act, their relations rise as arcs through the sky, evidence from
- * the live feed strikes in, the panel appears city by city, and every reply and
- * every "I'm weighing this actor" fires a new arc. Panelists mid-thought ripple.
+ * the live feed strikes in, and once the simulation starts every move an actor
+ * makes against another fires a new arc, in the colour of its stance, while
+ * the events of the simulated worlds land where they happen. Actors deciding
+ * their next move ripple; each takes the colour of the way it pushes.
  * Every arc and every point can be hovered and clicked: a click selects that
  * piece of the research, lights it and what it touches, and dims the rest.
  *
@@ -25,15 +27,15 @@ import { ARC_STRIDE, mercator, packArcs, rgb, type ArcSpec, type LngLat } from '
 import { createDirector } from './camera';
 import { leader, outcomeColor, positionIn, shortAnswer } from './forecast';
 import { brief, relatedLinks } from './research';
-import { latestPosts, type RunState } from './state';
-import type { Link, Post } from './types';
+import type { RunState } from './state';
+import type { Link, Move } from './types';
 
 export const OI_ARCS = 'oi-arcs';
 const NODES = 'oi-nodes';
 const LAYERS = ['oi-node-halo', 'oi-node-core', 'oi-label-actor', 'oi-label-agent', 'oi-label-forecast'] as const;
 
 /**
- * OI's palette: violet where actors align or panelists agree, magenta where
+ * OI's palette: violet where actors align or work together, magenta where
  * they oppose or dispute, indigo for everything in between. The Style Studio
  * can change all three (see map-palette); these are the defaults.
  */
@@ -47,7 +49,7 @@ function lift(hex: string, amount: number): string {
 }
 
 /** Quotes are not drawn on the globe (the graph follows them); they would share evidence's look if they were. */
-const KIND: Record<Link['kind'], number> = { relation: 0, evidence: 1, reply: 2, focus: 3, cite: 1 };
+const KIND: Record<Link['kind'], number> = { relation: 0, evidence: 1, move: 2, cite: 1 };
 const TONE: Record<Link['tone'], number> = { support: 0, oppose: 1, neutral: 2 };
 
 /* ───────────────────────────── Colours ───────────────────────────── */
@@ -63,18 +65,15 @@ export function leanColor(p: number | null): string {
   return `#${a.map((v, k) => Math.round(v + (b[k] - v) * t).toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** The spread of the panel's latest estimates, which a number question's colours are measured against. */
-export function estimateRange(s: RunState): [number, number] {
-  const vals = [...latestPosts(s).values()].map(p => p.estimate?.value).filter((v): v is number => Number.isFinite(v));
-  return vals.length ? [Math.min(...vals), Math.max(...vals)] : [0, 0];
-}
-
-/** A panelist's colour: their lean on a yes/no question, their leading pick on a choice, where their estimate sits on a number. */
-export function agentTint(s: RunState, post: Post | undefined, range = estimateRange(s)): string {
-  if (!post) return '#b388ff';
-  if (s.frame?.kind === 'choice' && post.shares) return outcomeColor(leader(post.shares));
-  if (s.frame?.kind === 'number' && post.estimate) return leanColor(positionIn(post.estimate.value, range[0], range[1]));
-  return leanColor(post.probability);
+/**
+ * A cast actor's colour: the way its latest move pushes (magenta toward YES
+ * or higher, indigo toward NO or lower, violet when it holds), or on a choice
+ * question the outcome it works for.
+ */
+export function actorTint(s: RunState, move: Move | undefined): string {
+  if (!move) return '#b388ff';
+  if (s.frame?.kind === 'choice' && move.favors) return outcomeColor(Math.max(0, s.frame.outcomes.indexOf(move.favors)));
+  return leanColor(move.push === 'yes' ? 0.88 : move.push === 'no' ? 0.12 : 0.5);
 }
 
 /* ───────────────────────────── Shaders ───────────────────────────── */
@@ -653,7 +652,7 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
   /** When each link (by id and version) started drawing, on the layer's clock. */
   const births = new Map<string, number>();
   const nodeBirths = new Map<string, number>();
-  /** When each panelist started thinking, so their ripple keeps its rhythm across updates. */
+  /** When each actor started deciding, so its ripple keeps its rhythm across updates. */
   const thinkingSince = new Map<string, number>();
   let focusSince = 0;
   let hoverKey: string | null = null;
@@ -707,9 +706,9 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
         },
       });
     };
-    // Actors, scenarios and signposts are always named; a panelist is named once the view is close, or when selected.
-    label('oi-label-actor', ['any', ['in', ['get', 'kind'], ['literal', ['actor', 'scenario', 'signpost']]], ['all', ['==', ['get', 'kind'], 'agent'], ['==', ['get', 'sel'], 1]]], 10);
-    label('oi-label-agent', ['all', ['==', ['get', 'kind'], 'agent'], ['!=', ['get', 'sel'], 1]], 9, 2.4);
+    // Actors, scenarios and signposts are always named; an event is named once the view is close, or when selected.
+    label('oi-label-actor', ['any', ['in', ['get', 'kind'], ['literal', ['actor', 'scenario', 'signpost']]], ['all', ['==', ['get', 'kind'], 'event'], ['==', ['get', 'sel'], 1]]], 10);
+    label('oi-label-agent', ['all', ['==', ['get', 'kind'], 'event'], ['!=', ['get', 'sel'], 1]], 9, 2.4);
     if (!map.getLayer('oi-label-forecast')) {
       map.addLayer({
         id: 'oi-label-forecast', type: 'symbol', source: NODES, filter: ['==', ['get', 'kind'], 'focus'],
@@ -783,7 +782,6 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
     const now = clock();
     const pos = new Map<string, LngLat>();
     for (const a of s.actors) if (a.lat !== null && a.lng !== null) pos.set(`a:${a.id}`, [a.lng, a.lat]);
-    for (const g of s.agents) if (g.lat !== null && g.lng !== null) pos.set(`g:${g.id}`, [g.lng, g.lat]);
     for (const c of s.context) if (c.lat !== null && c.lng !== null) pos.set(`c:${c.id}`, [c.lng, c.lat]);
 
     const lit = relatedLinks(s, selected);
@@ -818,8 +816,9 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
       for (const l of s.links) if (lit.has(l.id)) { touching.add(l.from); touching.add(l.to); }
     }
     const dimNode = (key: string) => (selected && touching.size > 1 && !touching.has(key) ? 1 : 0);
-    const latest = latestPosts(s);
-    const range = estimateRange(s);
+    // Each cast actor's latest move, across the worlds.
+    const latest = new Map<string, Move>();
+    for (const m of s.moves) latest.set(m.actor, m);
     const features: Feature[] = [];
     const point = (lng: number, lat: number, props: Record<string, string | number | boolean>): Feature =>
       ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: props });
@@ -831,15 +830,17 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
     for (const a of s.actors) {
       if (a.lat === null || a.lng === null) continue;
       const key = `a:${a.id}`;
-      features.push(point(a.lng, a.lat, { key, kind: 'actor', label: a.name, color: lift(palette.support, 0.35), radius: key === selected ? 6.5 : 5, halo: 16, sel: key === selected ? 1 : 0, dim: dimNode(key) }));
+      const color = a.persona ? actorTint(s, latest.get(a.id)) : lift(palette.support, 0.35);
+      features.push(point(a.lng, a.lat, { key, kind: 'actor', label: a.name, color, radius: key === selected ? 6.5 : a.persona ? 5.5 : 4.2, halo: a.persona ? 18 : 12, sel: key === selected ? 1 : 0, dim: dimNode(key) }));
     }
-    for (const g of s.agents) {
-      if (g.lat === null || g.lng === null) continue;
-      const key = `g:${g.id}`;
-      const post = latest.get(g.id);
-      features.push(point(g.lng, g.lat, {
-        key, kind: 'agent', label: g.name, color: agentTint(s, post, range),
-        radius: key === selected ? 5.5 : 3.6, halo: s.thinking[g.id] ? 14 : 9, sel: key === selected ? 1 : 0, dim: dimNode(key),
+    // What happened in the simulated worlds, where it happened.
+    for (const e of s.events) {
+      if (e.lat === null || e.lng === null) continue;
+      const key = `e:${e.id}`;
+      features.push(point(e.lng, e.lat, {
+        key, kind: 'event', label: `${e.world} · ${e.title.length > 36 ? `${e.title.slice(0, 35)}…` : e.title}`,
+        color: leanColor(e.push === 'yes' ? 0.88 : e.push === 'no' ? 0.12 : 0.5), radius: key === selected ? 4.5 : e.kind === 'shock' ? 3.6 : 2.8, halo: 8,
+        sel: key === selected ? 1 : 0, dim: dimNode(key),
       }));
     }
     if (s.report) {
@@ -867,7 +868,7 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
     }
     (map.getSource(NODES) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features });
 
-    // Ripples: a node's arrival, a panelist thinking, and the forecast's home while the run is live.
+    // Ripples: a node's arrival, an actor deciding, and the prediction's home while the run is live.
     const pings: Ping[] = [];
     const base = rgb(palette.support);
     for (const f of features) {
@@ -877,11 +878,13 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
       const [lng, lat] = f.geometry.coordinates as LngLat;
       pings.push({ pos: mercator([lng, lat]), color: f.properties.kind === 'actor' ? base : rgb(String(f.properties.color)), size: 26, start: nodeBirths.get(key)!, period: 1.5, once: true });
     }
-    for (const id of [...thinkingSince.keys()]) if (!(id in s.thinking)) thinkingSince.delete(id);
-    for (const g of s.agents) {
-      if (!(g.id in s.thinking) || g.lat === null || g.lng === null) continue;
-      if (!thinkingSince.has(g.id)) thinkingSince.set(g.id, now);
-      pings.push({ pos: mercator([g.lng, g.lat]), color: rgb(lift(palette.support, 0.4)), size: 22, start: thinkingSince.get(g.id)!, period: 1.1, once: false });
+    // An actor deciding its next move, in any world, ripples.
+    const deciding = new Set(Object.keys(s.thinking).map(k => k.split(':')[1]));
+    for (const id of [...thinkingSince.keys()]) if (!deciding.has(id)) thinkingSince.delete(id);
+    for (const a of s.actors) {
+      if (!deciding.has(a.id) || a.lat === null || a.lng === null) continue;
+      if (!thinkingSince.has(a.id)) thinkingSince.set(a.id, now);
+      pings.push({ pos: mercator([a.lng, a.lat]), color: rgb(lift(palette.support, 0.4)), size: 30, start: thinkingSince.get(a.id)!, period: 1.1, once: false });
     }
     if (s.status === 'running' && focus && focus.lat !== null && focus.lng !== null) {
       focusSince ||= now;

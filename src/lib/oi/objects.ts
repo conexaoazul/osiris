@@ -2,17 +2,17 @@
  * OSIRIS OI: the run as objects.
  *
  * Everything a run produces is an object of a type, under the same research
- * key the globe, the graph and the lists use: actors (`a:`), panelists (`g:`),
- * sources from the live feeds and the asker's data (`c:`), the report
- * (`r:report`), its scenarios (`s:`) and signposts (`p:`), and the links
- * between them (`link:`). This module lists
+ * key the globe, the graph and the lists use: actors (`a:`), sources from the
+ * research, the live feeds and the asker's data (`c:`), the simulated worlds
+ * (`w:`) and their events (`e:`), the report (`r:report`), its scenarios (`s:`) and
+ * signposts (`p:`), and the links between them (`link:`). This module lists
  * them, finds them by name, and finds them in text, so a sentence that
  * mentions "China" can open China.
  */
 import type { RunState } from './state';
 import type { LinkKind } from './types';
 
-export type ObjectType = 'actor' | 'panelist' | 'source' | 'report' | 'scenario' | 'signpost';
+export type ObjectType = 'actor' | 'source' | 'world' | 'event' | 'report' | 'scenario' | 'signpost';
 
 export interface OiObject {
   key: string;
@@ -23,23 +23,22 @@ export interface OiObject {
   subtitle: string;
 }
 
-/** A panelist in one line: "Agent 3 (Energy desk trader)". */
-export const agentLabel = (a: { name: string; role: string }) => (a.role ? `${a.name} (${a.role})` : a.name);
-
 export const TYPE_LABEL: Record<ObjectType, string> = {
-  actor: 'Actor', panelist: 'Panelist', source: 'Source', report: 'Report', scenario: 'Scenario', signpost: 'Signpost',
+  actor: 'Actor', source: 'Source', world: 'World', event: 'Event', report: 'Report', scenario: 'Scenario', signpost: 'Signpost',
 };
 
 export const LINK_LABEL: Record<LinkKind, string> = {
-  relation: 'Relation', evidence: 'Evidence', reply: 'Exchange', focus: 'Weighing', cite: 'Quote',
+  relation: 'Relation', evidence: 'Evidence', move: 'Move', cite: 'Quote',
 };
 
-/** Every object in the run, in a stable order: actors, panelists, sources, the report, scenarios, signposts. */
+/** Every object in the run, in a stable order: actors, sources, worlds, events, the report, scenarios, signposts. */
 export function objectsOf(s: RunState): OiObject[] {
   return [
-    ...s.actors.map(a => ({ key: `a:${a.id}`, type: 'actor' as const, subtype: a.kind, title: a.name, subtitle: a.role })),
-    ...s.agents.map(a => ({ key: `g:${a.id}`, type: 'panelist' as const, subtype: 'panelist', title: agentLabel(a), subtitle: [a.role, a.place].filter(Boolean).join(' · ') })),
+    ...s.actors.map(a => ({ key: `a:${a.id}`, type: 'actor' as const, subtype: a.kind, title: a.name, subtitle: a.persona ? `Plays: ${a.persona.goal}` : a.role })),
+
     ...s.context.map(c => ({ key: `c:${c.id}`, type: 'source' as const, subtype: c.kind, title: c.title, subtitle: [c.source, c.place].filter(Boolean).join(' · ') })),
+    ...s.worlds.map(w => ({ key: `w:${w}`, type: 'world' as const, subtype: 'world', title: `World ${w}`, subtitle: [...s.points].reverse().find(p => p.world === w)?.note ?? 'Simulated world' })),
+    ...s.events.map(e => ({ key: `e:${e.id}`, type: 'event' as const, subtype: e.kind, title: e.title, subtitle: `World ${e.world} · ${e.date}` })),
     ...(s.report ? [{ key: 'r:report', type: 'report' as const, subtype: 'report', title: s.report.headline, subtitle: s.report.answer }] : []),
     ...(s.report?.scenarios ?? []).map((sc, i) => ({ key: `s:${i}`, type: 'scenario' as const, subtype: 'scenario', title: sc.name, subtitle: `${Math.round(sc.probability * 100)}% · ${sc.description}` })),
     ...(s.report?.signposts ?? []).map((sp, i) => ({ key: `p:${i}`, type: 'signpost' as const, subtype: 'signpost', title: sp.text, subtitle: sp.place })),
@@ -72,16 +71,15 @@ export function searchObjects(s: RunState, query: string, limit = 12): OiObject[
 export type Mention = string | { key: string; text: string };
 
 /**
- * Text split into plain runs and mentions of the run's actors and panelists,
+ * Text split into plain runs and mentions of the run's actors and sources,
  * by full name, whole words only, case-insensitive. The longest name wins
  * where names overlap ("European Union" over "Union").
  */
 export function mentions(text: string, s: RunState): Mention[] {
   const names = [
     ...s.actors.map(a => ({ key: `a:${a.id}`, name: a.name })),
-    ...s.agents.map(a => ({ key: `g:${a.id}`, name: a.name })),
-    // Panelists address each other by id too: "agent_3".
-    ...s.agents.map(a => ({ key: `g:${a.id}`, name: a.id })),
+    // Actors refer to each other by id too: "opec_plus".
+    ...s.actors.map(a => ({ key: `a:${a.id}`, name: a.id })),
     // And name their sources by id: "w2 still keeps me up".
     ...s.context.filter(c => /^[cwbd]\d+$/.test(c.id)).map(c => ({ key: `c:${c.id}`, name: c.id })),
   ].filter(n => n.name.trim().length >= 3 || n.key.startsWith('c:')).sort((a, b) => b.name.length - a.name.length);

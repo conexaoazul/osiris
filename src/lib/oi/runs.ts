@@ -16,7 +16,8 @@ import { DEPTHS, FatalError, runEngine, type EngineDeps } from './engine';
 import type { SeedScope } from './depths';
 import { createChat, providerInfo, scrub, type ChatFn, type ProviderId } from './providers';
 import { applyEvent, currentAnswer, initialState, type RunState } from './state';
-import { postView } from './forecast';
+import { pointView } from './forecast';
+import { worldOutcome } from './prompts';
 import { text } from './parse';
 import type { ContextItem, Depth, OiEvent, Stamped } from './types';
 
@@ -147,7 +148,7 @@ export function startRun(input: StartInput, deps: StartDeps = {}): StartResult {
   store.runs.set(run.id, run);
 
   const depth = DEPTHS[input.depth];
-  emit(run, { t: 'start', question: input.question, depth: input.depth, provider: input.provider, model: input.model, agents: depth.agents, rounds: depth.rounds });
+  emit(run, { t: 'start', question: input.question, depth: input.depth, provider: input.provider, model: input.model, actors: depth.actors, periods: depth.periods, worlds: depth.worlds });
 
   const chat = deps.chat ?? createChat(input.provider, input.key, input.model);
   const key = input.key;
@@ -208,7 +209,7 @@ export function cancelRun(run: Run): boolean {
 
 export type InjectResult = { ok: true } | { ok: false; status: number; error: string };
 
-/** Queue an event for the panel to take up at the start of its next round. */
+/** Queue an event to land in every world at the start of the next period. */
 export function injectEvent(run: Run, raw: unknown): InjectResult {
   const t = text(raw, 400);
   if (t.length < 3) return { ok: false, status: 400, error: 'Describe the event in a few words.' };
@@ -278,7 +279,7 @@ const pct = (p: number | null | undefined) => (typeof p === 'number' && Number.i
 export function runSummary(run: Run, origin: string) {
   const s = run.state;
   const last = s.rounds[s.rounds.length - 1];
-  const latest = new Map(s.posts.map(p => [p.agent, p]));
+  const latest = new Map(s.points.map(p => [p.world, p]));
   return {
     id: run.id,
     status: s.status,
@@ -302,19 +303,23 @@ export function runSummary(run: Run, origin: string) {
     prior_pct: s.frame?.kind === 'choice' ? s.frame.prior.map(p => pct(p)) : undefined,
     anchor: s.frame?.kind === 'number' ? s.frame.anchor : undefined,
     progress: {
-      rounds_done: s.rounds.length,
-      rounds_planned: s.roundsPlanned,
-      agents: s.agents.length,
-      posts: s.posts.length,
+      periods_done: s.rounds.length,
+      periods_planned: s.periodsPlanned,
+      worlds: s.worlds.length || s.worldsPlanned,
+      actors_cast: s.actors.filter(a => a.persona).length,
+      moves: s.moves.length,
+      events: s.events.length,
       actors: s.actors.length,
       links: s.links.length,
       context_items: s.context.length,
     },
-    rounds: s.rounds.map(r => (s.frame?.kind === 'number' && r.value
-      ? { round: r.round, median: r.value.median, p25: r.value.p25, p75: r.value.p75, low: r.value.low, high: r.value.high, n: r.n }
+    // The simulated clock, and the worlds pooled at the end of each period.
+    periods: s.periods,
+    pooled: s.rounds.map(r => (s.frame?.kind === 'number' && r.value
+      ? { period: r.round, median: r.value.median, low: r.value.low, high: r.value.high, worlds: r.n }
       : s.frame?.kind === 'choice' && r.shares
-        ? { round: r.round, shares_pct: r.shares.map(x => pct(x)), first_picks: r.votes, n: r.n }
-        : { round: r.round, consensus_pct: pct(r.consensus), median_pct: pct(r.median), p25_pct: pct(r.p25), p75_pct: pct(r.p75), n: r.n })),
+        ? { period: r.round, shares_pct: r.shares.map(x => pct(x)), worlds_leaning: r.votes, worlds: r.n }
+        : { period: r.round, probability_pct: pct(r.consensus), lowest_pct: pct(r.min), highest_pct: pct(r.max), worlds: r.n })),
     report: s.report ? {
       headline: s.report.headline,
       answer: s.report.answer,
@@ -330,21 +335,25 @@ export function runSummary(run: Run, origin: string) {
       dissent: s.report.dissent,
       caveats: s.report.caveats,
       deviation: s.report.deviation || undefined,
+      path: s.report.path,
+      actor_moves: s.report.actorMoves,
+      worlds: s.report.worlds,
     } : null,
-    actors: s.actors.map(a => ({ id: a.id, name: a.name, kind: a.kind, place: a.place, lat: a.lat, lng: a.lng, role: a.role, lean: a.lean })),
-    // What the panel and the report quoted: the ids in drivers' `sources` and panelists' `quotes` point here.
+    actors: s.actors.map(a => ({ id: a.id, name: a.name, kind: a.kind, place: a.place, lat: a.lat, lng: a.lng, role: a.role, lean: a.lean, persona: a.persona })),
+    // What the actors and the report quoted: the ids in drivers' `sources` and moves' `quotes` point here.
     sources: s.context.map(c => ({
       id: c.id, kind: c.kind, title: c.title, source: c.source, url: c.url, excerpt: c.excerpt, place: c.place || undefined, published: c.published || undefined,
       quoted: s.links.filter(l => l.kind === 'cite' && l.to === `c:${c.id}`).length,
     })),
-    panel: s.agents.map(a => {
-      const p = latest.get(a.id);
+    // Each world as it stands: its figure, how it ended, and its events in date order.
+    worlds: s.worlds.map(w => {
+      const p = latest.get(w);
       return {
-        id: a.id, name: a.name, role: a.role, place: a.place,
-        view: p ? postView(p, s.frame) : undefined,
-        probability_pct: s.frame?.kind === 'binary' ? pct(p?.probability ?? null) : undefined,
-        last_post: p?.text,
-        quotes: p?.cites,
+        world: w,
+        view: p ? pointView(p, s.frame) : undefined,
+        outcome: s.frame && p ? worldOutcome(s.frame, p) : undefined,
+        note: p?.note,
+        events: s.events.filter(e => e.world === w).map(e => ({ date: e.date, title: e.title, detail: e.detail, kind: e.kind, actors: e.actors, place: e.place || undefined })),
       };
     }),
     injected: s.injects,

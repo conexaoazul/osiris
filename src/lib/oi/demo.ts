@@ -29,25 +29,20 @@ const RELATIONS: [string, string, string, number][] = [
   ['markets', 'usa', 'influence', 0.7], ['brazil', 'china', 'trade', 0.6], ['japan', 'china', 'rivalry', 0.5], ['india', 'usa', 'negotiation', 0.4],
 ];
 
-/** The panel: anonymous, each a role and a place. */
-const PANEL = [
-  ['Sovereign risk analyst', 'New York, United States', 40.71, -74.01],
-  ['Energy desk trader', 'Tokyo, Japan', 35.68, 139.69],
-  ['Political economist', 'Buenos Aires, Argentina', -34.6, -58.38],
-  ['Security analyst', 'Warsaw, Poland', 52.23, 21.01],
-  ['Commodities strategist', 'Lagos, Nigeria', 6.52, 3.38],
-  ['Former diplomat', 'Beirut, Lebanon', 33.89, 35.5],
-  ['Superforecaster', 'Bengaluru, India', 12.97, 77.59],
-  ['Historian of crises', 'Oslo, Norway', 59.91, 10.75],
-  ['Trade policy researcher', 'Singapore', 1.35, 103.82],
-  ['Central bank watcher', 'Frankfurt, Germany', 50.11, 8.68],
-  ['Shipping analyst', 'Panama City, Panama', 8.98, -79.52],
-  ['Contrarian macro investor', 'Dubai, UAE', 25.2, 55.27],
-  ['Defence journalist', 'Seoul, South Korea', 37.57, 126.98],
-  ['Development economist', 'Nairobi, Kenya', -1.29, 36.82],
-  ['Sell-side strategist', 'London, United Kingdom', 51.51, -0.13],
-  ['Climate risk modeller', 'São Paulo, Brazil', -23.55, -46.63],
-] as const;
+/** What the cast actors want, and what they can do, in turn. */
+const GOALS = [
+  'Keep its leverage and avoid being blamed for a breakdown.',
+  'Lock in gains before the window closes.',
+  'Protect its economy from the fallout.',
+  'Be seen as the indispensable broker.',
+];
+const LEVERS = [
+  ['Sign or refuse a framework', 'Impose or lift sanctions', 'Call a summit'],
+  ['Cut or raise output', 'Set prices', 'Delay a decision'],
+  ['Veto in council', 'Offer guarantees', 'Recall its envoy'],
+  ['Host talks', 'Mediate', 'Offer financing'],
+];
+const ACTIONS = ['Opens back-channel talks with', 'Puts public pressure on', 'Offers a limited concession to', 'Threatens sanctions against', 'Delays its reply to'];
 
 function hash(s: string): number {
   let h = 2166136261;
@@ -115,108 +110,126 @@ function answer(req: ChatRequest): string {
       ...(passages.length ? { quotes: passages.map(text => ({ text, note: 'From your data.' })) } : {}),
     });
   }
-  if (u.includes('Assemble a panel of')) {
-    const n = Number(u.match(/panel of (\d+)/)?.[1] ?? 8);
+  if (u.includes('"cast"') && u.includes('Cast the')) {
+    const n = Number(u.match(/Cast the (\d+) actors/)?.[1] ?? 4);
     return JSON.stringify({
-      agents: PANEL.slice(0, n).map(([role, place, lat, lng], i) => ({
-        role, place, lat, lng,
-        lens: 'Weighs incentives over rhetoric.', bias: 'Anchoring on the last crisis.',
-        watches: [ACTORS[i % ACTORS.length].id, ACTORS[(i + 3) % ACTORS.length].id], prior: 0.2 + 0.5 * hash(role),
+      cast: ACTORS.slice(0, n).map((a, i) => ({
+        id: a.id,
+        goal: GOALS[i % GOALS.length],
+        levers: LEVERS[i % LEVERS.length],
+        red_lines: 'Any deal that weakens it at home.',
+        style: i % 2 ? 'Cautious, bound by procedure.' : 'Opportunistic, moves on leverage.',
       })),
     });
   }
-  if (u.includes('This is round')) {
-    const name = u.match(/You are ([^,]+),/)?.[1] ?? 'Someone';
-    const round = Number(u.match(/This is round (\d+) of/)?.[1] ?? 1);
-    const others = [...u.matchAll(/^- ([a-z0-9_]+) · /gm)].map(m => m[1]).filter(id => id !== slug(name));
-    const start = 0.15 + 0.6 * hash(name);
-    const p = start + (0.42 - start) * (1 - 1 / (1 + round));
-    const breaking = u.includes('BREAKING') ? 0.08 : 0;
-    const target = others[Math.floor(hash(name + round) * others.length)];
+  if (u.includes('Decide your move for this period')) {
+    const name = /^You are (.+?) \(/m.exec(u)?.[1] ?? 'Someone';
+    const me = ACTORS.find(a => a.name === name)?.id ?? slug(name);
+    const [, world = 'A', periodRaw = '1'] = /SIMULATED WORLD (\w+), PERIOD (\d+) OF/.exec(u) ?? [];
+    const period = Number(periodRaw);
     const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
-    // Quote a source or two, word for word, preferring the research and the asker's data to the
-    // live headlines, and say which way each one pushes.
+    const others = [...u.matchAll(/^- ([a-z0-9_]+): /gm)].map(m => m[1]).filter(id => id !== me && ACTORS.some(a => a.id === id));
+    const seed = `${me}${world}${period}`;
+    const target = others[Math.floor(hash(seed) * others.length)];
+    const up = hash(seed + 'u') > 0.5;
+    const stance = target ? (['cooperate', 'pressure', 'oppose'] as const)[Math.floor(hash(seed + 's') * 3)] : 'hold';
+    // Quote a source when grounding is asked for, preferring the research and the asker's data.
     const listed = u.includes('"cites"') ? feedSources(u) : [];
     const preferred = listed.filter(x => /^[wbd]/.test(x.id));
-    const sources = preferred.length ? preferred : listed;
-    const pick = (k: number) => sources[Math.floor(hash(name + round + k) * sources.length)];
+    const pool = preferred.length ? preferred : listed;
+    const src = pool[Math.floor(hash(seed + 'c') * pool.length)];
     const first = /^OUTCOMES: 1\. (.+?)(?:  2\.|$)/m.exec(u)?.[1]?.trim();
-    const cites = [...new Set([pick(0), pick(1)].filter(Boolean))].map((src, k) => {
-      const up = hash(src.id + name) > 0.45;
-      const effect = kind === 'choice' ? 'yes' : kind === 'number' ? (up ? 'up' : 'down') : (up ? 'yes' : 'no');
-      return {
-        source: src.id, quote: opening(src.says, 12), effect,
-        ...(kind === 'choice' && first ? { favors: first } : {}),
-        why: k === 0 ? (up ? 'Makes the main actors more likely to move.' : 'Shows the obstacles are still in place.') : 'Context on the timing.',
-      };
-    });
-    const shape: Record<string, unknown> = {};
-    if (kind === 'choice') {
-      const n = (u.match(/^OUTCOMES: (.*)$/m)?.[1].match(/\d+\./g) ?? []).length || 4;
-      // Leanings that start apart and drift toward the front-runner, round by round.
-      const raw = Array.from({ length: n }, (_, k) => (k === 0 ? 0.35 + 0.1 * round : 0.2 + 0.4 * hash(name + k)) + breaking * (k === 1 ? 2 : 0));
-      const total = raw.reduce((t, v) => t + v, 0);
-      shape.shares = raw.map(v => Math.round((v / total) * 100) / 100);
-    } else if (kind === 'number') {
-      const anchor = figure(u, 'ANCHOR') ?? 80;
-      const value = anchor * (0.92 + 0.2 * hash(name)) * (1 - 0.02 * (round - 1)) * (1 + breaking);
-      shape.estimate = Math.round(value * 10) / 10;
-      shape.low = Math.round(value * 0.9 * 10) / 10;
-      shape.high = Math.round(value * 1.12 * 10) / 10;
-    } else {
-      shape.probability = Math.round(Math.min(0.95, p + breaking) * 100) / 100;
-    }
+    const effect = kind === 'choice' ? 'yes' : kind === 'number' ? (up ? 'up' : 'down') : (up ? 'yes' : 'no');
     return JSON.stringify({
-      ...shape,
-      confidence: 0.4 + 0.5 * hash(name + 'c'),
-      post: round === 1
-        ? `The base rate is my anchor${cites[0] ? `; ${cites[0].source} moves me ${cites[0].effect === 'no' || cites[0].effect === 'down' ? 'down' : 'up'} from it` : ''}.`
-        : `${target ? `${target.replace(/^agent_(\d+)$/, 'Agent $1')} makes a fair point, ` : ''}but ${cites[0] ? `${cites[0].source} still ${cites[0].effect === 'no' || cites[0].effect === 'down' ? 'holds me down' : 'keeps me up'}` : 'the incentives cut the other way'}.`,
-      reasoning: 'Base rate first, then the strongest actor incentives.',
-      ...(cites.length ? { cites } : {}),
-      replies: target ? [{ to: target, stance: hash(target + round) > 0.5 ? 'agree' : 'disagree', point: 'Your timeline looks too tight.' }] : [],
-      focus: [ACTORS[Math.floor(hash(name + round) * ACTORS.length)].id],
-      changed: round === 1 ? 'nothing' : 'The panel’s spread narrowed.',
+      action: target ? `${ACTIONS[Math.floor(hash(seed + 'a') * ACTIONS.length)]} ${ACTORS.find(a => a.id === target)?.name ?? target}` : 'Holds its position and waits for the others to move',
+      statement: period === 1 ? 'We will act in our own interest, and we are ready to talk.' : 'Our position is unchanged.',
+      targets: target ? [target] : [],
+      stance,
+      effect,
+      ...(kind === 'choice' && first ? { favors: first } : {}),
+      why: up ? 'The moment favours pressing ahead.' : 'Waiting costs less than moving now.',
+      ...(src ? { cites: [{ source: src.id, quote: opening(src.says, 12), effect: up ? 'yes' : 'no', why: 'It shows where things stand today.' }] } : {}),
     });
   }
-  if (u.includes('report agent') && u.includes('JSON shape')) {
-    const swarm = Number(u.match(/consensus is (\d+)%/)?.[1] ?? 40) / 100;
+  if (u.includes('You are the world engine')) {
+    const [, world = 'A', periodRaw = '1', ofRaw = '1'] = /simulated world (\w+) \(\d+ of \d+\)[\s\S]*?PERIOD (\d+) OF (\d+)/.exec(u) ?? [];
+    const period = Number(periodRaw);
+    const last = period === Number(ofRaw);
+    const [, start = '2026-10-03', end = '2026-12-31'] = /\((\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})\)/.exec(u) ?? [];
+    const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
+    const movers = [...u.matchAll(/^- ([a-z0-9_]+) \((.+?)\): /gm)].map(m => ({ id: m[1], name: m[2] }));
+    const day = (offset: number) => new Date(Date.parse(`${start}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
+    const span = Math.max(1, (Date.parse(end) - Date.parse(start)) / 86_400_000);
+    const pair = movers.slice(0, 2);
+    const seed = `${world}${period}`;
+    const up = hash(seed) > 0.5;
+    const events = [
+      {
+        date: day(Math.round(span * 0.3)),
+        title: pair.length === 2 ? `${pair[0].name} and ${pair[1].name} meet, without a breakthrough` : 'Talks continue without a breakthrough',
+        detail: 'Both sides restate their positions; officials say work continues at a technical level.',
+        actors: pair.map(p => p.id), effect: kind === 'number' ? (up ? 'up' : 'down') : up ? 'yes' : 'no', kind: 'event', place: 'Geneva', lat: 46.2, lng: 6.14,
+      },
+      ...(world === 'C' && period === 2 ? [{
+        date: day(Math.round(span * 0.6)), title: 'A tanker is seized near the Strait of Hormuz', detail: 'Shipping insurers raise rates; markets jump.',
+        actors: [], effect: kind === 'number' ? 'up' : 'no', kind: 'shock', place: 'Strait of Hormuz', lat: 26.57, lng: 56.25,
+      }] : []),
+    ];
+    const prior = Number(/(\d+)% YES/.exec(u)?.[1] ?? 30) / 100;
+    const drift = (hash(seed + 'd') - 0.5) * 0.16;
+    const p = Math.min(0.92, Math.max(0.08, prior + drift));
+    const state = kind === 'choice'
+      ? { resolved: null, shares: [0.42 + drift, 0.3, 0.18, 0.1 - drift].map(v => Math.max(0.02, Math.round(v * 100) / 100)) }
+      : kind === 'number'
+        ? { value: Math.round((figure(u, 'ANCHOR') ?? 80) * (1 + drift * 0.3) * 10) / 10 }
+        : { resolved: last && world === 'B' && p > 0.45 ? 'yes' : last && p < 0.2 ? 'no' : null, probability: Math.round(p * 100) / 100 };
+    return JSON.stringify({ events, state: { ...state, note: up ? 'Momentum builds, slowly.' : 'Positions harden.' } });
+  }
+  if (u.includes('You are the OSIRIS report agent') && u.includes('JSON shape')) {
+    const swarm = Number(u.match(/The worlds pooled give (\d+)%/)?.[1] ?? 35) / 100;
     const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
     const median = parseFloat(u.match(/median is ([-0-9.,]+)/)?.[1]?.replace(/,/g, '') ?? '');
     const listedIds = feedSources(u).map(x => x.id);
     const ids = listedIds.filter(id => /^[wbd]/.test(id)).length ? listedIds.filter(id => /^[wbd]/.test(id)) : listedIds;
     const sourced = (k: number) => (ids.length ? { sources: [ids[k % ids.length], ids[(k + 2) % ids.length]].filter((v, i, a) => a.indexOf(v) === i) } : {});
+    // The path: the first world's events, as the most likely course.
+    const firstWorld = /WORLD A: [^\n]*\n([\s\S]*?)(?:\n\nWORLD |\n\nTHE WORLDS POOLED)/.exec(u)?.[1] ?? '';
+    const path = [...firstWorld.matchAll(/^- (\d{4}-\d{2}-\d{2}): ([^.]+)\./gm)].slice(0, 6).map(m => ({ date: m[1], title: m[2], detail: 'As the simulation played it out.', actors: [] }));
+    const worlds = [...u.matchAll(/^WORLD (\w+): ended (.+)$/gm)].map(m => ({ world: m[1], outcome: m[2], summary: 'Talks dragged on; neither side moved first.' }));
     const answerFields = kind === 'choice'
       ? { shares: [0.46, 0.29, 0.17, 0.08] }
       : kind === 'number' && Number.isFinite(median)
         ? { estimate: { value: median, low: Math.round(median * 0.9 * 10) / 10, high: Math.round(median * 1.1 * 10) / 10 } }
         : { probability: swarm };
     return JSON.stringify({
-      headline: kind === 'choice' ? 'The front-runner holds, the challenger is live' : kind === 'number' ? 'A narrow range, slightly below today' : 'Panel leans no, with a live minority case',
+      headline: kind === 'choice' ? 'The front-runner holds, the challenger stays close' : kind === 'number' ? 'A narrow range, slightly below today' : 'No deal by the horizon, but talks keep it alive',
       ...answerFields,
       confidence: 'medium',
-      summary: 'The panel converged below even odds. The base rate anchors the view, while the minority sees a faster path if the main actors align. The spread narrowed every round.',
+      summary: 'In most worlds the actors kept talking without anyone moving first: positions hardened, deadlines slipped, and the question was still open at the horizon. One world found a late path to agreement. The base rate and the actors\' red lines point the same way.',
+      path,
+      actor_moves: ACTORS.slice(0, 3).map(a => ({ actor: a.id, prediction: `${a.name} keeps its position and waits for the others.` })),
+      worlds,
       drivers: [
         { text: 'Great-power rivalry limits room for a deal', push: 'no', weight: 0.7, actor: 'china', ...sourced(0) },
         { text: 'Allied coordination is unusually tight', push: 'yes', weight: 0.5, actor: 'eu', ...sourced(1) },
         { text: 'Energy prices raise the cost of escalation', push: 'no', weight: 0.4, actor: 'opec', ...sourced(2) },
       ],
       scenarios: [
-        { name: 'Muddle through', probability: 0.5, description: 'No decisive move before the horizon.', place: 'Brussels', lat: 50.85, lng: 4.35 },
-        { name: 'Breakthrough', probability: swarm, description: 'A deal lands late in the window.', place: 'Geneva', lat: 46.2, lng: 6.14 },
-        { name: 'Escalation', probability: 0.15, description: 'A crisis overtakes the agenda.', place: 'Taipei', lat: 25.03, lng: 121.56 },
+        { name: 'Stalemate', probability: 0.6, description: 'Talks continue; nobody moves first before the horizon.', place: 'Brussels', lat: 50.85, lng: 4.35 },
+        { name: 'Late deal', probability: swarm, description: 'A deal lands late in the window.', place: 'Geneva', lat: 46.2, lng: 6.14 },
+        { name: 'Shock', probability: 0.1, description: 'A crisis overtakes the agenda.', place: 'Strait of Hormuz', lat: 26.57, lng: 56.25 },
       ],
       signposts: [
         { text: 'Envoys meet in person', means: 'yes', place: 'Geneva', lat: 46.2, lng: 6.14 },
         { text: 'New export controls announced', means: 'no', place: 'Washington', lat: 38.9, lng: -77.04 },
         { text: 'Tanker traffic falls in the Strait of Hormuz', means: 'no', place: 'Strait of Hormuz', lat: 26.57, lng: 56.25 },
       ],
-      dissent: 'A third of the panel sees a fast path if the summit holds.',
+      dissent: 'One world found a late path to agreement if the main actors align.',
       caveats: ['Demo model: scripted answers, not analysis.'],
       deviation_reason: null,
     });
   }
-  return 'This is the demo model talking. With a real provider, the panelist or the report agent would answer here in character.';
+  return 'This is the demo model talking. With a real provider, the actor or the report agent would answer here in character.';
 }
 
 /** A chat function that answers from the script, after `delay` ms (a range, to look like a live model). */

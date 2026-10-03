@@ -1,32 +1,37 @@
 /**
- * OSIRIS OI: the debate over time.
+ * OSIRIS OI: the simulation over time.
  *
- * One lane per panelist, one column per round, each cell the view that
- * panelist gave in that round and how far it moved; above them, the panel's
- * pooled view round by round, its spread, and the report's final word. Every
- * value is put on one 0..1 scale so lanes and chart line up whatever the
- * question asks: a probability as itself, a choice as the share given to the
- * outcome that ended up leading, a number by where it falls in the run's range.
+ * One lane per simulated world, one column per period of simulated time (real
+ * dates), each cell where the question stood in that world at the end of the
+ * period, how far it moved, and what happened; above them, the worlds pooled
+ * period by period, and the report's final word. Every value is put on one
+ * 0..1 scale so lanes and chart line up whatever the question asks: a
+ * probability as itself, a choice as the share of the outcome that ended up
+ * leading, a number by where it falls in the run's range.
  */
 import type { RunState } from './state';
-import type { Post } from './types';
-import { formatAmount, leader, positionIn, postView } from './forecast';
+import type { Period, SimEvent, WorldPoint } from './types';
+import { formatAmount, leader, pointView, positionIn } from './forecast';
 
 export interface TimelineCell {
   round: number;
-  post: Post;
+  point: WorldPoint;
   /** 0..1 on the timeline's scale. */
   value: number;
   label: string;
-  /** Change since this panelist's previous round, on the same scale; null for their first. */
+  /** Change since this world's previous period, on the same scale; null for its first. */
   delta: number | null;
+  /** What happened in this world in this period, in date order. */
+  events: SimEvent[];
 }
 
 export interface TimelineLane {
+  /** The world's research key, "w:<world>". */
   key: string;
   name: string;
+  /** How it ended, or where it stands. */
   role: string;
-  /** One per round, null where they did not speak. */
+  /** One per period, null where the world has not reported yet. */
   cells: (TimelineCell | null)[];
   /** First to last, on the scale. */
   drift: number | null;
@@ -36,8 +41,10 @@ export interface TimelinePoint { value: number; low: number | null; high: number
 
 export interface Timeline {
   rounds: number[];
+  /** The periods' dates, by period. */
+  periods: Period[];
   lanes: TimelineLane[];
-  /** The panel's pooled view after each round, or null for a round not yet pooled. */
+  /** The worlds pooled after each period, or null for a period not yet pooled. */
   pooled: (TimelinePoint | null)[];
   /** The report's figure, once written. */
   final: TimelinePoint | null;
@@ -52,35 +59,37 @@ export interface Timeline {
 
 export function timelineOf(s: RunState): Timeline {
   const frame = s.frame;
-  const n = Math.max(s.roundsPlanned, s.rounds.length, ...s.posts.map(p => p.round), 1);
+  const n = Math.max(s.periods.length, s.periodsPlanned, s.rounds.length, 1);
   const rounds = Array.from({ length: n }, (_, i) => i + 1);
   const [lo, hi] = rangeOf(s);
   const leadShares = s.report?.shares ?? s.rounds[s.rounds.length - 1]?.shares;
   const lead = leadShares ? leader(leadShares) : 0;
-
-  const scale = (p: Post): number => {
-    if (frame?.kind === 'number') return positionIn(p.estimate?.value ?? NaN, lo, hi);
+  const scale = (p: WorldPoint): number => {
+    if (frame?.kind === 'number') return positionIn(p.value ?? NaN, lo, hi);
     if (frame?.kind === 'choice') return p.shares?.[lead] ?? 0;
     return p.probability;
   };
   const toScale = (v: number) => (frame?.kind === 'number' ? positionIn(v, lo, hi) : v);
 
-  const lanes: TimelineLane[] = s.agents.map(a => {
+  const lanes: TimelineLane[] = s.worlds.map(w => {
     let prev: number | null = null;
     const cells = rounds.map(r => {
-      const post = s.posts.find(p => p.agent === a.id && p.round === r);
-      if (!post) return null;
-      const value = scale(post);
-      // A number's cell carries the estimate alone; its range is in the panelist's view.
-      const label = frame?.kind === 'number' && post.estimate ? formatAmount(post.estimate.value) : postView(post, frame);
-      const cell: TimelineCell = { round: r, post, value, label, delta: prev === null ? null : value - prev };
+      const point = s.points.find(p => p.world === w && p.period === r);
+      if (!point) return null;
+      const value = scale(point);
+      const events = s.events.filter(e => e.world === w && e.period === r).sort((a, b) => a.date.localeCompare(b.date));
+      const cell: TimelineCell = { round: r, point, value, label: pointView(point, frame), delta: prev === null ? null : value - prev, events };
       prev = value;
       return cell;
     });
-    const spoken = cells.filter((c): c is TimelineCell => c !== null);
+    const played = cells.filter((c): c is TimelineCell => c !== null);
+    const last = played[played.length - 1]?.point;
     return {
-      key: `g:${a.id}`, name: a.name, role: a.role, cells,
-      drift: spoken.length > 1 ? spoken[spoken.length - 1].value - spoken[0].value : null,
+      key: `w:${w}`,
+      name: `World ${w}`,
+      role: last ? (last.resolved ? `Resolved: ${pointView(last, frame)}` : last.note || pointView(last, frame)) : 'Not started',
+      cells,
+      drift: played.length > 1 ? played[played.length - 1].value - played[0].value : null,
     };
   });
 
@@ -88,12 +97,12 @@ export function timelineOf(s: RunState): Timeline {
     const st = s.rounds.find(x => x.round === r);
     if (!st) return null;
     if (frame?.kind === 'number' && st.value) {
-      return { value: toScale(st.value.median), low: toScale(st.value.p25), high: toScale(st.value.p75), label: formatAmount(st.value.median) };
+      return { value: toScale(st.value.median), low: toScale(st.value.min), high: toScale(st.value.max), label: formatAmount(st.value.median) };
     }
     if (frame?.kind === 'choice' && st.shares) {
       return { value: st.shares[lead] ?? 0, low: null, high: null, label: `${frame.outcomes[lead] ?? ''} ${Math.round((st.shares[lead] ?? 0) * 100)}%`.trim() };
     }
-    return { value: st.consensus, low: st.p25, high: st.p75, label: `${Math.round(st.consensus * 100)}%` };
+    return { value: st.consensus, low: st.min, high: st.max, label: `${Math.round(st.consensus * 100)}%` };
   });
 
   let final: TimelinePoint | null = null;
@@ -112,14 +121,13 @@ export function timelineOf(s: RunState): Timeline {
     : frame?.kind === 'choice' ? ['0%', `${frame.outcomes[lead] ?? 'Leader'} 100%`] : ['NO', 'YES'];
 
   const label = frame?.kind === 'number' ? (v: number) => formatAmount(lo + v * (hi - lo)) : (v: number) => `${Math.round(v * 100)}%`;
-  return { rounds, lanes, pooled, final, reference, injects: s.injects, ends, label };
+  return { rounds, periods: s.periods, lanes, pooled, final, reference, injects: s.injects, ends, label };
 }
 
-/** A number question's range: every estimate in every round, the pooled spreads, the report's range and today's value. */
+/** A number question's range: every world's value in every period, the report's range and today's value. */
 export function rangeOf(s: RunState): [number, number] {
   const vals = [
-    ...s.posts.map(p => p.estimate?.value),
-    ...s.rounds.flatMap(st => (st.value ? [st.value.p25, st.value.p75] : [])),
+    ...s.points.map(p => p.value),
     s.report?.estimate?.low, s.report?.estimate?.high,
     s.frame?.anchor ?? undefined,
   ].filter((v): v is number => typeof v === 'number' && Number.isFinite(v));

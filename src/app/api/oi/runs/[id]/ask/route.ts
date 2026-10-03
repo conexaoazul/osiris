@@ -6,7 +6,7 @@ import { askPrediction, credentials, disabled, disabledResponse, fail, json, lim
  *
  * POST /api/oi/runs/{id}/ask
  *   headers  X-OI-Key (or Authorization: Bearer); X-OI-Provider and X-OI-Model default to the run's
- *   body     { target?: "report" | <panelist id>, message }
+ *   body     { target?: "report" | <id of an actor that played>, message }
  */
 export const dynamic = 'force-dynamic';
 export const maxDuration = 75;

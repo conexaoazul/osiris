@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { amount, answerText, directionWord, formatAmount, leader, normalizeShares, orderEstimate, postView, positionIn } from './forecast';
-import { parseKind, parsePost, parseReport } from './parse';
+import { amount, answerText, directionWord, formatAmount, leader, normalizeShares, orderEstimate, pointView, positionIn } from './forecast';
+import { parseKind, parseReport, parseStep } from './parse';
 import { roundStatFor } from './aggregate';
-import type { Agent, Frame, Post } from './types';
+import type { Frame, Period, WorldPoint } from './types';
 
 const frame = (over: Partial<Frame>): Frame => ({
   question: 'q', kind: 'binary', proposition: 'p', resolution: '', horizon: '', outcomes: [], unit: '',
   baseRate: 0.5, prior: [], anchor: null, baseRateReason: '', focus: null, ...over,
 });
 
-const me: Agent = { id: 'me', name: 'Me', role: 'r', lens: '', bias: '', prior: 0.4, watches: [], place: '', lat: null, lng: null };
+const period: Period = { index: 2, label: '1 Nov – 30 Nov 2026', start: '2026-11-01', end: '2026-11-30' };
+const point = (over: Partial<WorldPoint>): WorldPoint => ({ world: 'A', period: 1, probability: 0.5, resolved: null, note: '', ...over });
 
 describe('reading figures', () => {
   it('reads amounts however they are written', () => {
@@ -64,41 +65,47 @@ describe('the kind of question', () => {
   });
 });
 
-describe('a turn on a choice or a number', () => {
+describe('a world\'s step on a choice or a number', () => {
   const choice = frame({ kind: 'choice', outcomes: ['A', 'B', 'C'], prior: [0.5, 0.3, 0.2] });
   const number = frame({ kind: 'number', unit: 'USD', anchor: 80 });
 
   it('reads shares and makes the leading share its probability', () => {
-    const post = parsePost({ shares: [1, 3, 0] }, me, 1, new Set(), new Set(), { probability: 0.5 }, choice);
-    expect(post.shares).toEqual([0.25, 0.75, 0]);
-    expect(post.probability).toBe(0.75);
-    expect(postView(post, choice)).toBe('B 75%');
+    const { point: p } = parseStep({ state: { shares: [1, 3, 0] } }, 'A', period, new Set(), choice, null);
+    expect(p.shares).toEqual([0.25, 0.75, 0]);
+    expect(p.probability).toBe(0.75);
+    expect(pointView(p, choice)).toBe('B 75%');
   });
 
-  it('keeps the earlier shares when a reply has none', () => {
-    const post = parsePost({}, me, 2, new Set(), new Set(), { probability: 0.5, shares: [0.6, 0.3, 0.1] }, choice);
-    expect(post.shares).toEqual([0.6, 0.3, 0.1]);
+  it('keeps the world\'s earlier shares when a reply has none, and reads an outcome that came about', () => {
+    const kept = parseStep({}, 'A', period, new Set(), choice, point({ shares: [0.6, 0.3, 0.1] }));
+    expect(kept.point.shares).toEqual([0.6, 0.3, 0.1]);
+    const won = parseStep({ state: { resolved: 'c' } }, 'A', period, new Set(), choice, null);
+    expect(won.point).toMatchObject({ resolved: 'C', shares: [0, 0, 1], probability: 1 });
+    expect(pointView(won.point, choice)).toBe('C');
   });
 
-  it('reads an estimate in either shape, and orders its range', () => {
-    const flat = parsePost({ estimate: '92.5', low: 99, high: 85 }, me, 1, new Set(), new Set(), { probability: 0.5 }, number);
-    expect(flat.estimate).toEqual({ value: 92.5, low: 85, high: 99 });
-    const nested = parsePost({ estimate: { value: 90, low: 80, high: 100 } }, me, 1, new Set(), new Set(), { probability: 0.5 }, number);
-    expect(nested.estimate).toEqual({ value: 90, low: 80, high: 100 });
-    expect(postView(nested, number)).toBe('90 (80–100)');
+  it('reads a value, falling back on the world\'s last one, then the anchor', () => {
+    expect(parseStep({ state: { value: '92.5' } }, 'A', period, new Set(), number, null).point.value).toBe(92.5);
+    expect(parseStep({ state: { value: 'soon' } }, 'A', period, new Set(), number, point({ value: 81 })).point.value).toBe(81);
+    expect(parseStep({}, 'A', period, new Set(), number, null).point.value).toBe(80);
+    expect(() => parseStep({}, 'A', period, new Set(), frame({ kind: 'number' }), null)).toThrow();
   });
 
-  it('sits a panelist out rather than invent a figure', () => {
-    expect(() => parsePost({ estimate: 'soon' }, me, 1, new Set(), new Set(), { probability: 0.5 }, number)).toThrow();
-    const kept = parsePost({ estimate: 'soon' }, me, 2, new Set(), new Set(), { probability: 0.5, estimate: { value: 81, low: 75, high: 88 } }, number);
-    expect(kept.estimate?.value).toBe(81);
+  it('keeps events inside their period, in date order, with one surprise at most', () => {
+    const { events } = parseStep({
+      events: [
+        { date: '2027-03-01', title: 'Late', kind: 'event' },
+        { date: '2026-11-05', title: 'First shock', kind: 'shock' },
+        { date: '2026-11-06', title: 'Second shock', kind: 'shock' },
+        { title: '' },
+      ],
+    }, 'A', period, new Set(), frame({}), null);
+    expect(events.map(e => [e.title, e.date])).toEqual([['First shock', '2026-11-05'], ['Late', '2026-11-30']]);
   });
 });
 
 describe('pooling', () => {
-  const post = (over: Partial<Post>): Post => ({
-    id: 'x', agent: 'x', round: 1, probability: 0.5, confidence: 0.5, text: '', reasoning: '', changed: '', replies: [], focus: [], ...over,
-  });
+  const post = (over: Partial<{ probability: number; confidence: number; shares: number[]; estimate: { value: number; low: number; high: number } }>) => ({ probability: 0.5, confidence: 0.5, ...over });
 
   it('pools a choice and counts first picks', () => {
     const stat = roundStatFor(1, [
@@ -137,7 +144,7 @@ describe('the answer', () => {
     expect(binary.answer).toBe('62% YES');
   });
 
-  it('falls back to the panel when the report gives no figure', () => {
+  it('falls back to the simulation when the report gives no figure', () => {
     const number = frame({ kind: 'number', unit: 'USD' });
     const r = parseReport({}, { probability: 0.5, estimate: { value: 81, low: 75, high: 88 } }, new Set(), number);
     expect(r.estimate).toEqual({ value: 81, low: 75, high: 88 });

@@ -1,8 +1,9 @@
 /**
  * OSIRIS OI: the run's execution trace.
  *
- * What the engine did, step by step, with when and how long: read the feeds,
- * map the world, assemble the panel, each round of debate, write the report.
+ * What the engine did, step by step, with when and how long: research the
+ * question, map the world, cast the actors, each period of simulated time
+ * across the worlds, write the prediction.
  * Steps the run has not reached yet are listed as pending, so the trace reads
  * as the whole plan from the first event. Every figure comes from the run's
  * own events; nothing here is estimated.
@@ -16,7 +17,7 @@ export type StepStatus = 'done' | 'active' | 'pending' | 'failed' | 'skipped';
 export interface TraceMetric { label: string; value: string }
 
 export interface TraceStep {
-  /** 'context', 'graph', 'agents', 'round:<n>' or 'report'. */
+  /** 'context', 'graph', 'agents', 'round:<n>' (a period) or 'report'. */
   id: string;
   phase: Phase;
   title: string;
@@ -42,12 +43,14 @@ export function traceOf(s: RunState): TraceStep[] {
   const planned: { id: string; phase: Phase; title: string }[] = [
     { id: 'context', phase: 'context', title: 'Research the question' },
     { id: 'graph', phase: 'graph', title: 'Map the world' },
-    { id: 'agents', phase: 'agents', title: 'Assemble the panel' },
-    ...Array.from({ length: Math.max(1, s.roundsPlanned) }, (_, i) => ({ id: `round:${i + 1}`, phase: 'simulate' as Phase, title: `Debate · round ${i + 1}` })),
-    { id: 'report', phase: 'report', title: 'Write the forecast' },
+    { id: 'agents', phase: 'agents', title: 'Cast the actors' },
+    ...Array.from({ length: Math.max(1, s.periods.length || s.periodsPlanned) }, (_, i) => ({
+      id: `round:${i + 1}`, phase: 'simulate' as Phase, title: `Simulate · ${s.periods[i]?.label ?? `period ${i + 1}`}`,
+    })),
+    { id: 'report', phase: 'report', title: 'Write the prediction' },
   ];
 
-  // The engine announces each stage as it enters it; the k-th "simulate" is round k.
+  // The engine announces each stage as it enters it; the k-th "simulate" is period k.
   const seen = new Map<string, { label: string; at: number; index: number }>();
   let round = 0;
   s.steps.forEach((st, index) => {
@@ -90,8 +93,13 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
       if (f?.kind === 'number' && f.anchor !== null) out.push({ label: 'Today', value: formatAmount(f.anchor) });
       return out;
     }
-    case 'agents':
-      return [{ label: 'Panelists', value: s.agentsPlanned ? `${s.agents.length} / ${s.agentsPlanned}` : String(s.agents.length) }];
+    case 'agents': {
+      const cast = count(s.actors, a => Boolean(a.persona));
+      return [
+        { label: 'Actors cast', value: s.actorsPlanned ? `${cast} / ${s.actorsPlanned}` : String(cast) },
+        ...(s.periods.length ? [{ label: 'Periods', value: String(s.periods.length) }, { label: 'Worlds', value: String(s.worlds.length) }] : []),
+      ];
+    }
     case 'report': {
       const r = s.report;
       if (!r) return [];
@@ -105,14 +113,18 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
     }
   }
   const round = Number(id.slice(6));
-  const posts = s.posts.filter(p => p.round === round);
+  const moves = s.moves.filter(m => m.period === round);
   const out: TraceMetric[] = [
-    { label: 'Turns', value: s.agents.length ? `${posts.length} / ${s.agents.length}` : String(posts.length) },
-    { label: 'Replies', value: String(posts.reduce((n, p) => n + p.replies.length, 0)) },
+    { label: 'Moves', value: String(moves.length) },
+    { label: 'Events', value: String(count(s.events, e => e.period === round && e.kind !== 'injected')) },
   ];
+  const shocks = count(s.events, e => e.period === round && e.kind === 'shock');
+  if (shocks) out.push({ label: 'Surprises', value: String(shocks) });
   // Quotes, and how many were found word for word in their sources.
-  const cites = posts.flatMap(p => p.cites ?? []);
-  if (posts.some(p => p.cites)) out.push({ label: 'Quotes', value: cites.length ? `${cites.length} · ${count(cites, c => c.exact)} verbatim` : '0' });
+  const cites = moves.flatMap(m => m.cites ?? []);
+  if (cites.length) out.push({ label: 'Quotes', value: `${cites.length} · ${count(cites, c => c.exact)} verbatim` });
+  const resolved = count(s.points, p => p.period === round && Boolean(p.resolved));
+  if (resolved) out.push({ label: 'Resolved', value: `${resolved} / ${s.worlds.length}` });
   const injects = count(s.injects, x => x.round === round);
   if (injects) out.push({ label: 'Injected', value: String(injects) });
   const stat = s.rounds.find(r => r.round === round);
@@ -121,7 +133,7 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
     else if (s.frame?.kind === 'choice' && stat.shares) {
       const i = leader(stat.shares);
       out.push({ label: 'Leads', value: `${s.frame.outcomes[i] ?? '—'} ${pct(stat.shares[i])}` });
-    } else out.push({ label: 'Consensus', value: pct(stat.consensus) }, { label: 'Spread', value: `${pct(stat.p25)}–${pct(stat.p75)}` });
+    } else out.push({ label: 'Worlds pooled', value: pct(stat.consensus) }, { label: 'Range', value: `${pct(stat.min)}–${pct(stat.max)}` });
   }
   return out;
 }

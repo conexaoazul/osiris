@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { DEPTHS, askRun, estimateCalls, mapLimit, panelFor, runEngine, type EngineDeps } from './engine';
-import { PANEL_SEED_MAX, SEED_MAX, seedCost } from './depths';
+import { DEPTHS, askRun, estimateCalls, limiter, pooled, runEngine, type EngineDeps } from './engine';
+import { PANEL_SEED_MAX, SEED_MAX, seedCost, simulationCalls } from './depths';
 import { createDemoChat } from './demo';
 import { ProviderError, type ChatFn } from './providers';
-import { applyEvent, initialState, type RunState } from './state';
-import type { Agent, ContextItem, OiEvent, Post } from './types';
+import { applyEvent, castOf, initialState, type RunState } from './state';
+import type { ContextItem, OiEvent } from './types';
 
 /** What the research finds: articles with their links and what they say, and background. */
 const WEB: ContextItem[] = [
@@ -38,135 +38,128 @@ function harness(chat: ChatFn, injects: string[][] = []) {
 const fold = (events: OiEvent[]): RunState =>
   events.reduce((s, e, seq) => applyEvent(s, { ...e, seq, at: seq } as never), initialState());
 
+const Q = 'Will the envoys sign a framework deal by year end?';
+const isMove = (u: string) => u.includes('Decide your move for this period');
+const isStep = (u: string) => u.includes('You are the world engine');
+
 describe('runEngine', () => {
-  it('runs every stage and draws the analysis as it goes', async () => {
+  it('researches, casts the actors, and simulates them period by period in parallel worlds', async () => {
     const h = harness(createDemoChat());
-    await runEngine({ question: 'Will the envoys sign a framework deal by year end?', seed: '', depth: 'quick', useFeeds: true }, h.deps);
-
-    const phases = h.events.filter(e => e.t === 'phase').map(e => (e as { phase: string }).phase);
-    expect(phases).toEqual(['context', 'graph', 'agents', 'simulate', 'simulate', 'report']);
-
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: true }, h.deps);
     const s = fold(h.events);
     const d = DEPTHS.quick;
-    // The research comes first: articles and background with their links, then the live feeds.
+
+    const phases = h.events.filter(e => e.t === 'phase').map(e => (e as { phase: string }).phase);
+    expect(phases).toEqual(['context', 'graph', 'agents', ...Array(d.periods).fill('simulate'), 'report']);
     expect(s.context.map(c => c.id)).toEqual(['w1', 'w2', 'b1', 'c1', 'c2']);
-    expect(h.prompts[0]).toContain('Plan the research');
-    // The panel is anonymous: Agent 1, Agent 2…, each known by a role.
-    expect(s.agents.map(a => a.name)).toEqual(Array.from({ length: DEPTHS.quick.agents }, (_, i) => `Agent ${i + 1}`));
-    expect(s.agents.every(a => a.id === `agent_${a.name.slice(6)}` && a.role.length > 3)).toBe(true);
-    // Every quote is attributed: which way it pushed the panelist, and why; the research is quoted before the headlines.
-    const cites = s.posts.flatMap(p => p.cites ?? []);
-    expect(cites.every(c => c.push && c.why)).toBe(true);
-    expect(cites.every(c => /^[wb]/.test(c.source))).toBe(true);
-    expect(s.frame?.proposition).toContain('envoys');
-    expect(s.actors.length).toBeGreaterThan(5);
-    expect(s.agents).toHaveLength(d.agents);
-    expect(s.posts).toHaveLength(d.agents * d.rounds);
-    expect(s.rounds.map(r => r.round)).toEqual([1, 2]);
+
+    // The clock: dated periods from today to the horizon, end to end, and the worlds that run on it.
+    expect(s.periods).toHaveLength(d.periods);
+    expect(s.periods[0].start).toBe('2026-10-02');
+    expect(s.periods[d.periods - 1].end).toBe('2026-12-31');
+    expect(s.worlds).toEqual(['A', 'B']);
+
+    // The cast: actors from the world model, each with what it wants and can do.
+    const cast = castOf(s);
+    expect(cast).toHaveLength(d.actors);
+    expect(cast.every(a => a.persona!.goal && a.persona!.levers.length > 0)).toBe(true);
+
+    // Every cast actor moves in every world and period; the world engine resolves each.
+    expect(s.moves).toHaveLength(d.worlds * d.periods * d.actors);
+    expect(s.points).toHaveLength(d.worlds * d.periods);
+    expect(s.rounds.map(r => [r.round, r.n])).toEqual(s.periods.map(p => [p.index, d.worlds]));
+    for (const e of s.events) {
+      const p = s.periods[e.period - 1];
+      expect(e.date >= p.start && e.date <= p.end).toBe(true);
+    }
+    // First moves are grounded in the real world, word for word; later ones need not be.
+    expect(s.moves.filter(m => m.period === 1).every(m => m.cites?.length && m.cites.every(c => c.exact))).toBe(true);
     const kinds = new Set(s.links.map(l => l.kind));
-    expect(kinds).toEqual(new Set(['relation', 'evidence', 'focus', 'reply', 'cite']));
-    // Every turn quotes the feed, word for word, and each quote is a thread to its source; none needed sending back.
-    expect(s.posts.every(p => (p.cites?.length ?? 0) > 0 && p.cites!.every(c => c.exact))).toBe(true);
-    expect(s.links.filter(l => l.kind === 'cite' && l.from.startsWith('g:')).length).toBe(s.posts.reduce((n, p) => n + p.cites!.length, 0));
-    // The report's drivers name their sources, and the report joins the graph by them.
-    expect(s.report?.drivers.every(d => (d.sources?.length ?? 0) > 0)).toBe(true);
+    expect(kinds).toEqual(new Set(['relation', 'evidence', 'move', 'cite']));
+
+    // The prediction: a probability, and the story, date by date.
+    const r = s.report!;
+    expect(r.probability).toBeCloseTo(s.rounds[d.periods - 1].consensus, 1);
+    expect(r.path.length).toBeGreaterThan(0);
+    expect(r.path.map(p => p.date)).toEqual([...r.path.map(p => p.date)].sort());
+    expect(r.worlds.map(w => w.world)).toEqual(['A', 'B']);
+    expect(r.drivers.every(dr => (dr.sources?.length ?? 0) > 0)).toBe(true);
     expect(s.links.some(l => l.kind === 'cite' && l.from === 'r:report')).toBe(true);
-    expect(s.report?.probability).toBeCloseTo(s.rounds[1].consensus, 1);
     expect(s.usage.calls).toBe(estimateCalls('quick'));
     expect(h.prompts.length).toBe(estimateCalls('quick'));
   });
 
-  it('forecasts a choice between outcomes as shares', async () => {
-    const h = harness(createDemoChat());
-    await runEngine({ question: 'Who will win the runoff in December?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
-    const s = fold(h.events);
-    expect(s.frame?.kind).toBe('choice');
-    expect(s.frame?.outcomes.length).toBeGreaterThanOrEqual(2);
-    expect(s.posts.every(p => p.shares?.length === s.frame!.outcomes.length)).toBe(true);
-    expect(s.rounds.every(r => r.shares && Math.abs(r.shares.reduce((t, v) => t + v, 0) - 1) < 0.01)).toBe(true);
-    expect(s.report?.shares?.length).toBe(s.frame!.outcomes.length);
-    expect(s.report?.answer).toMatch(/^Front-runner \(\d+%\)$/);
-    expect(h.prompts.find(p => p.includes('This is round'))).toContain('OUTCOMES: 1. Front-runner');
+  it('predicts a choice between outcomes as shares, and a quantity as an estimate across the worlds', async () => {
+    const choice = harness(createDemoChat());
+    await runEngine({ question: 'Who will win the runoff in December?', seed: '', depth: 'quick', useFeeds: false }, choice.deps);
+    const c = fold(choice.events);
+    expect(c.frame?.kind).toBe('choice');
+    expect(c.points.every(p => p.shares?.length === c.frame!.outcomes.length)).toBe(true);
+    expect(c.report?.shares).toHaveLength(c.frame!.outcomes.length);
+
+    const number = harness(createDemoChat());
+    await runEngine({ question: 'How much will Brent crude cost on 31 December?', seed: '', depth: 'quick', useFeeds: false }, number.deps);
+    const n = fold(number.events);
+    expect(n.frame?.kind).toBe('number');
+    expect(n.points.every(p => typeof p.value === 'number')).toBe(true);
+    const v = n.rounds[n.rounds.length - 1].value!;
+    // The range is the spread between the worlds.
+    expect(v.low).toBe(v.min);
+    expect(v.high).toBe(v.max);
+    // The report reads the median as the prompt prints it, to a tenth.
+    expect(n.report?.estimate?.value).toBeCloseTo(v.median, 1);
   });
 
-  it('forecasts a quantity as an estimate with a range', async () => {
+  it('puts the sources in front of the world model and every actor', async () => {
     const h = harness(createDemoChat());
-    await runEngine({ question: 'How much will Brent crude cost on 31 December?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
-    const s = fold(h.events);
-    expect(s.frame).toMatchObject({ kind: 'number', unit: 'USD per barrel', anchor: 84.2 });
-    expect(s.posts.every(p => p.estimate && p.estimate.low <= p.estimate.value && p.estimate.value <= p.estimate.high)).toBe(true);
-    expect(s.rounds.every(r => r.value && Number.isFinite(r.value.median))).toBe(true);
-    expect(s.report?.estimate?.value).toBeCloseTo(s.rounds[1].value!.median, 1);
-    expect(s.report?.answer).toMatch(/USD per barrel \(/);
-    expect(h.prompts.find(p => p.includes('This is round'))).toContain('"estimate": number');
-  });
-
-  it('feeds live context into the world model and the panel', async () => {
-    const h = harness(createDemoChat());
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: 'Leaked draft text.', depth: 'quick', useFeeds: true }, h.deps);
+    await runEngine({ question: Q, seed: 'Leaked draft text.', depth: 'quick', useFeeds: true }, h.deps);
     const world = h.prompts.find(p => p.includes('Build the world model'))!;
     expect(world).toContain('[c1]');
-    expect(world).toContain('[w1]');
-    // An article's excerpt goes in with it, so the panel can quote what it says.
     expect(world).toContain('seven of nine chapters of the framework are agreed');
     expect(world).toContain('Leaked draft text.');
-    expect(h.prompts.find(p => p.includes('This is round'))).toContain('Envoys due in Geneva');
+    expect(h.prompts.filter(isMove).every(p => p.includes('[w1]') && p.includes('YOUR GOAL:'))).toBe(true);
   });
 
-  it('lifts passages of the asker data for the panel to quote; the whole of it only when the whole panel reads it', async () => {
+  it('lifts passages of the asker data for the actors to quote; the whole of it only when the whole simulation reads it', async () => {
     const brief = harness(createDemoChat());
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: 'Our channel check: 7 of 9 delegations ready.\nThe hosts expect a signing in November.', depth: 'quick', useFeeds: false }, brief.deps);
+    await runEngine({ question: Q, seed: 'Our channel check: 7 of 9 delegations ready.\nThe hosts expect a signing in November.', depth: 'quick', useFeeds: false }, brief.deps);
     const b = fold(brief.events);
-    // The world model's passages became sources d1, d2, and the panel quoted them.
     expect(b.context.map(c => c.id)).toEqual(['d1', 'd2']);
-    expect(b.context[0]).toMatchObject({ kind: 'data', title: 'Our channel check: 7 of 9 delegations ready.' });
-    expect(b.posts.every(p => p.cites?.some(c => c.source.startsWith('d') && c.exact))).toBe(true);
-    // The data itself stays with the world model.
+    expect(b.moves.filter(m => m.period === 1).every(m => m.cites?.some(c => c.source.startsWith('d') && c.exact))).toBe(true);
     expect(brief.prompts.filter(p => p.includes('SEED [data]'))).toHaveLength(0);
 
     const panel = harness(createDemoChat());
     const seed = `Our channel check: 7 of 9 delegations ready.${' More rows.'.repeat(2_000)}`;
-    await runEngine({ question: 'Will the envoys sign a deal?', seed, seedScope: 'panel', depth: 'quick', useFeeds: false }, panel.deps);
-    const turns = panel.prompts.filter(p => p.includes('This is round'));
-    expect(turns.length).toBeGreaterThan(0);
-    expect(turns.every(p => p.includes('7 of 9 delegations'))).toBe(true);
-    expect(panel.prompts[panel.prompts.length - 1]).toContain('7 of 9 delegations');
-    // Every turn reads the head of the data, not all of it.
-    expect(turns[0].length).toBeLessThan(seed.length);
+    await runEngine({ question: Q, seed, seedScope: 'panel', depth: 'quick', useFeeds: false }, panel.deps);
+    const moves = panel.prompts.filter(isMove);
+    expect(moves.every(p => p.includes('SEED [data]') && p.includes('7 of 9 delegations'))).toBe(true);
+    // Every move reads the head of the data, not all of it.
+    expect(moves[0].length).toBeLessThan(seed.length);
     expect(fold(panel.events).report).not.toBeNull();
   });
 
-  it('sends a post that quotes nothing back once, and keeps it as it is if it still quotes nothing', async () => {
+  it('sends a first move that quotes nothing back once, and asks nothing of later moves', async () => {
     const demo = createDemoChat();
-    // A model that leaves out its quotes: on the first ask only, or always.
-    const forgetful = (always: boolean): ChatFn => async req => {
+    const forgetful: ChatFn = async req => {
       const out = await demo(req);
-      if (!req.user.includes('This is round') || (!always && req.user.includes('quoted no source'))) return out;
+      if (!isMove(req.user) || req.user.includes('quoted no source')) return out;
       const j = JSON.parse(out.text);
       delete j.cites;
       return { ...out, text: JSON.stringify(j) };
     };
     const d = DEPTHS.quick;
-    const turns = d.agents * d.rounds;
-
-    const once = harness(forgetful(false));
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: true }, once.deps);
-    const s1 = fold(once.events);
-    expect(s1.posts.every(p => (p.cites?.length ?? 0) > 0)).toBe(true);
-    expect(s1.usage.calls).toBe(estimateCalls('quick') + turns);
-
-    const never = harness(forgetful(true));
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: true }, never.deps);
-    const s2 = fold(never.events);
-    expect(s2.posts).toHaveLength(turns);
-    expect(s2.posts.every(p => p.cites?.length === 0)).toBe(true);
-    expect(s2.usage.calls).toBe(estimateCalls('quick') + turns);
+    const h = harness(forgetful);
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: true }, h.deps);
+    const s = fold(h.events);
+    expect(s.moves.filter(m => m.period === 1).every(m => (m.cites?.length ?? 0) > 0)).toBe(true);
+    // One more call for each first move, and none for the rest.
+    expect(s.usage.calls).toBe(estimateCalls('quick') + d.worlds * d.actors);
   });
 
   it('asks for no quotes when there is nothing to quote', async () => {
     const h = harness(createDemoChat());
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
-    expect(h.prompts.filter(p => p.includes('This is round')).every(p => !p.includes('"cites"'))).toBe(true);
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps);
+    expect(h.prompts.filter(isMove).every(p => !p.includes('"cites"'))).toBe(true);
     // Without the live feeds there is no research either, so no research plan.
     expect(fold(h.events).usage.calls).toBe(estimateCalls('quick', false));
   });
@@ -177,50 +170,69 @@ describe('runEngine', () => {
     h.deps.research = async () => covered.map(c => ({ ...c, kind: c.id.startsWith('b') ? 'wiki' as const : 'web' as const }));
     await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: true }, h.deps);
     const ids = fold(h.events).context.map(c => `${c.id}:${c.title}`);
-    // "Envoys due in Geneva" names the envoys; "New export controls floated" does not, and goes.
     expect(ids.filter(x => x.startsWith('c'))).toEqual(['c1:Envoys due in Geneva']);
   });
 
-  it('puts an injected event in front of the panel from the next round on, and in the report', async () => {
+  it('lands an injected event in every world from the next period on, and in the report', async () => {
     const h = harness(createDemoChat(), [[], ['A ceasefire is announced in Geneva']]);
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
-    const round1 = h.prompts.filter(p => p.includes('This is round 1'));
-    const round2 = h.prompts.filter(p => p.includes('This is round 2'));
-    expect(round1.every(p => !p.includes('ceasefire'))).toBe(true);
-    expect(round2.every(p => p.includes('A ceasefire is announced in Geneva'))).toBe(true);
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps);
+    const s = fold(h.events);
+    const p1 = h.prompts.filter(u => (isMove(u) || isStep(u)) && /PERIOD 1 OF/.test(u));
+    const p2 = h.prompts.filter(u => (isMove(u) || isStep(u)) && /PERIOD 2 OF/.test(u));
+    expect(p1.every(u => !u.includes('ceasefire'))).toBe(true);
+    expect(p2.every(u => u.includes('A ceasefire is announced in Geneva'))).toBe(true);
+    expect(s.events.filter(e => e.kind === 'injected').map(e => [e.world, e.period])).toEqual([['A', 2], ['B', 2]]);
     expect(h.prompts[h.prompts.length - 1]).toContain('A ceasefire is announced in Geneva');
-    expect(fold(h.events).injects).toEqual([{ text: 'A ceasefire is announced in Geneva', round: 2 }]);
+    expect(s.injects).toEqual([{ text: 'A ceasefire is announced in Geneva', round: 2 }]);
   });
 
-  it('lets a panelist sit out a round when their call fails', async () => {
+  it('stops spending calls on a world once the question has resolved there', async () => {
+    const demo = createDemoChat();
+    const early: ChatFn = async req => {
+      const out = await demo(req);
+      if (!isStep(req.user) || !/simulated world A /.test(req.user)) return out;
+      const j = JSON.parse(out.text);
+      j.state = { resolved: 'yes', probability: 1, note: 'Signed.' };
+      return { ...out, text: JSON.stringify(j) };
+    };
+    const h = harness(early);
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps);
+    const s = fold(h.events);
+    const d = DEPTHS.quick;
+    expect(s.moves.filter(m => m.world === 'A').every(m => m.period === 1)).toBe(true);
+    expect(s.points.filter(p => p.world === 'A').map(p => p.resolved)).toEqual(Array(d.periods).fill('yes'));
+    expect(s.usage.calls).toBe(estimateCalls('quick', false) - (d.periods - 1) * (d.actors + 1));
+  });
+
+  it('lets an actor miss a move when its call fails, and carries on', async () => {
     const demo = createDemoChat();
     let failed = 0;
     const flaky: ChatFn = async req => {
-      if (req.user.includes('This is round 1') && failed++ === 0) throw new ProviderError('upstream', 'boom');
+      if (isMove(req.user) && failed++ === 0) throw new ProviderError('upstream', 'boom');
       return demo(req);
     };
     const h = harness(flaky);
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps);
     const s = fold(h.events);
-    expect(s.warnings.join(' ')).toMatch(/sat out round 1/);
-    expect(s.rounds[0].n).toBe(DEPTHS.quick.agents - 1);
+    expect(s.warnings.join(' ')).toMatch(/did not move in world/);
+    expect(s.moves).toHaveLength(simulationCalls('quick') - DEPTHS.quick.worlds * DEPTHS.quick.periods - 1);
     expect(s.report).not.toBeNull();
   });
 
   it('stops everything on a rejected key', async () => {
     let calls = 0;
     const h = harness(async () => { calls++; throw new ProviderError('auth', 'OpenAI rejected the key'); });
-    await expect(runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'deep', useFeeds: false }, h.deps)).rejects.toThrow(/rejected the key/);
+    await expect(runEngine({ question: Q, seed: '', depth: 'deep', useFeeds: false }, h.deps)).rejects.toThrow(/rejected the key/);
     expect(calls).toBe(1);
   });
 
-  it('gives up when most of the panel cannot answer', async () => {
+  it('gives up when no world can play a period', async () => {
     const demo = createDemoChat();
     const h = harness(async req => {
-      if (req.user.includes('This is round')) throw new ProviderError('upstream', 'overloaded');
+      if (isStep(req.user)) throw new ProviderError('upstream', 'overloaded');
       return demo(req);
     });
-    await expect(runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps)).rejects.toThrow(/Most of the panel/);
+    await expect(runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps)).rejects.toThrow(/No world could play/);
   });
 
   it('retries a reply that does not parse, once', async () => {
@@ -230,7 +242,7 @@ describe('runEngine', () => {
       if (req.user.includes('Build the world model') && garbled++ === 0) return { text: 'I think the answer is complicated.', input: 1, output: 1 };
       return demo(req);
     });
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps);
     expect(h.prompts[1]).toContain('could not be parsed');
   });
 
@@ -238,67 +250,71 @@ describe('runEngine', () => {
     const ac = new AbortController();
     const demo = createDemoChat();
     const h = harness(async req => {
-      if (req.user.includes('This is round')) ac.abort(new Error('cancelled'));
+      if (isMove(req.user)) ac.abort(new Error('cancelled'));
       return demo(req);
     });
     h.deps.signal = ac.signal;
-    await expect(runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps)).rejects.toThrow('cancelled');
+    await expect(runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps)).rejects.toThrow('cancelled');
     expect(fold(h.events).report).toBeNull();
   });
 });
 
-describe('panelFor', () => {
-  const agent = (id: string): Agent => ({ id, name: id, role: '', lens: '', bias: '', prior: 0.5, watches: [], place: '', lat: null, lng: null });
-  const post = (a: string, p: number, c: number, to: string[] = []): Post => ({
-    id: a, agent: a, round: 1, probability: p, confidence: c, text: '', reasoning: '', changed: '', focus: [],
-    replies: to.map(t => ({ to: t, stance: 'disagree' as const, point: '' })),
-  });
-
-  it('shows replies first, then both ends of the range, then confidence', () => {
-    const agents = new Map(['me', 'a', 'b', 'c', 'd'].map(id => [id, agent(id)]));
-    const prev = [post('me', 0.5, 1), post('a', 0.5, 0.9), post('b', 0.1, 0.1), post('c', 0.9, 0.2), post('d', 0.5, 0.3, ['me'])];
-    expect(panelFor(agents.get('me')!, prev, agents, 4).map(x => x.agent.id)).toEqual(['d', 'b', 'c', 'a']);
-  });
-});
-
 describe('askRun', () => {
-  it('talks to the report agent and to a panelist, on the run they were in', async () => {
+  it('talks to the report agent and to an actor that played, about what it did', async () => {
     const h = harness(createDemoChat());
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
+    await runEngine({ question: Q, seed: '', depth: 'quick', useFeeds: false }, h.deps);
     const s = fold(h.events);
     const seen: string[] = [];
     const chat: ChatFn = async req => { seen.push(req.user); return { text: 'Because.', input: 1, output: 1 }; };
     expect((await askRun(s, 'report', 'Why so low?', chat)).reply).toBe('Because.');
     expect(seen[0]).toContain(s.report!.headline);
-    await askRun(s, s.agents[0].id, 'What would change your mind?', chat);
-    expect(seen[1]).toContain(`You are ${s.agents[0].name}`);
-    await expect(askRun(s, 'nobody', 'hi', chat)).rejects.toThrow(/No panelist/);
+    const actor = castOf(s)[0];
+    await askRun(s, actor.id, 'What would change your mind?', chat);
+    expect(seen[1]).toContain(`You are ${actor.name}`);
+    expect(seen[1]).toContain('WHAT YOU DID IN THE SIMULATED WORLDS');
+    const bystander = s.actors.find(a => !a.persona)!;
+    await expect(askRun(s, bystander.id, 'hi', chat)).rejects.toThrow(/No actor/);
   });
 });
 
-describe('mapLimit', () => {
-  it('never runs more than the limit at once', async () => {
+describe('pooled', () => {
+  it('counts a world where the question resolved as near-certain', () => {
+    const stat = pooled(2, [
+      { world: 'A', period: 2, probability: 0.99, resolved: 'yes', note: '' },
+      { world: 'B', period: 2, probability: 0.3, resolved: null, note: '' },
+    ], 'binary', 0);
+    expect(stat.n).toBe(2);
+    expect(stat.max).toBeCloseTo(0.99, 2);
+    expect(stat.consensus).toBeGreaterThan(0.6);
+  });
+});
+
+describe('limiter', () => {
+  it('never runs more than the limit at once, and runs everything', async () => {
+    const gate = limiter(3);
     let live = 0;
     let peak = 0;
-    const out = await mapLimit([1, 2, 3, 4, 5, 6, 7], 3, async n => {
+    const out = await Promise.all([1, 2, 3, 4, 5, 6, 7].map(n => gate(async () => {
       peak = Math.max(peak, ++live);
       await new Promise(r => setTimeout(r, 5));
       live--;
       return n * 2;
-    });
+    })));
     expect(out).toEqual([2, 4, 6, 8, 10, 12, 14]);
     expect(peak).toBe(3);
   });
 });
 
 describe('seedCost', () => {
-  it('counts the data once for the brief, and once per read when the whole panel reads it', () => {
+  it('counts the data once for the world model, and once per read when the whole simulation reads it', () => {
     expect(seedCost(0, 'standard', 'panel')).toEqual({ tokens: 0, calls: 0 });
     expect(seedCost(4_000, 'standard', 'brief')).toEqual({ tokens: 1_000, calls: 1 });
     const d = DEPTHS.standard;
-    // 4,000 characters once, then the same again in every turn and the report.
-    expect(seedCost(4_000, 'standard', 'panel')).toEqual({ tokens: 1_000 * (2 + d.agents * d.rounds), calls: 2 + d.agents * d.rounds });
-    // Each panel read is capped at PANEL_SEED_MAX; the whole run at SEED_MAX.
-    expect(seedCost(SEED_MAX * 2, 'quick', 'panel').tokens).toBe(SEED_MAX / 4 + (PANEL_SEED_MAX / 4) * (1 + DEPTHS.quick.agents * DEPTHS.quick.rounds));
+    const reads = d.worlds * d.periods * d.actors + 1;
+    // 4,000 characters once, then the same again in every move and the report.
+    expect(seedCost(4_000, 'standard', 'panel')).toEqual({ tokens: 1_000 * (1 + reads), calls: 1 + reads });
+    // Each read is capped at PANEL_SEED_MAX; the whole run at SEED_MAX.
+    const q = DEPTHS.quick;
+    expect(seedCost(SEED_MAX * 2, 'quick', 'panel').tokens).toBe(SEED_MAX / 4 + (PANEL_SEED_MAX / 4) * (1 + q.worlds * q.periods * q.actors));
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { extractJson, locate, parsePost, parseReport, parseWorld, prob, slug, spreadDuplicates, text } from './parse';
-import type { Agent, ContextItem } from './types';
+import { extractJson, locate, parseCast, parseMove, parseReport, parseWorld, prob, slug, spreadDuplicates, text } from './parse';
+import type { ContextItem } from './types';
 
 describe('extractJson', () => {
   it('reads a bare object', () => {
@@ -115,31 +115,55 @@ describe('parseWorld', () => {
   });
 });
 
-describe('parsePost', () => {
-  const me: Agent = { id: 'me', name: 'Me', role: 'r', lens: '', bias: '', prior: 0.4, watches: [], place: '', lat: null, lng: null };
+describe('the cast and its moves', () => {
+  const actors = new Set(['usa', 'china', 'eu']);
 
-  it('drops replies to itself, to strangers and twice to the same panelist', () => {
-    const post = parsePost({
-      probability: 0.6, confidence: 'high',
-      replies: [{ to: 'me', stance: 'agree' }, { to: 'you', stance: 'disagree', point: 'no' }, { to: 'you', stance: 'agree' }, { to: 'nobody' }],
-      focus: ['usa', 'mars'],
-    }, me, 2, new Set(['me', 'you']), new Set(['usa']), { probability: 0.4 });
-    expect(post).toMatchObject({ id: 'me:2', probability: 0.6, confidence: 0.5, text: '…', focus: ['usa'] });
-    expect(post.replies).toEqual([{ to: 'you', stance: 'disagree', point: 'no' }]);
+  it('casts only actors the world model named, once each, up to the count', () => {
+    const cast = parseCast({ cast: [
+      { id: 'USA', goal: 'Win', levers: ['Sanction', '', 'Sign'], red_lines: 'No retreat', style: 'Bold' },
+      { id: 'mars', goal: 'Invade' },
+      { id: 'usa', goal: 'Again' },
+      { id: 'china' },
+      { id: 'eu' },
+    ] }, 2, actors);
+    expect(cast.map(c => c.id)).toEqual(['usa', 'china']);
+    expect(cast[0].persona).toEqual({ goal: 'Win', levers: ['Sanction', 'Sign'], redLines: 'No retreat', style: 'Bold' });
+    expect(cast[1].persona.goal).toBe('Advance its own interests');
   });
 
-  it('keeps the last view when the number is missing', () => {
-    expect(parsePost({}, me, 1, new Set(), new Set(), { probability: 0.37 }).probability).toBe(0.37);
+  it('reads a move: targets only other known actors, a stance, and which way it pushes', () => {
+    const move = parseMove({
+      action: 'Imposes tariffs', statement: 'Fair trade now', targets: ['china', 'usa', 'mars', 'china'], stance: 'PRESSURE', effect: 'down', why: 'Leverage',
+    }, 'usa', 'B', 2, actors);
+    expect(move).toMatchObject({ id: 'B:usa:2', world: 'B', period: 2, actor: 'usa', targets: ['china'], stance: 'pressure', push: 'no', why: 'Leverage', cites: [] });
+  });
+
+  it('holds when it aims at no one, and asks again when the reply names no action', () => {
+    expect(parseMove({ action: 'Waits' }, 'eu', 'A', 1, actors)).toMatchObject({ stance: 'hold', push: 'neutral', targets: [] });
+    expect(() => parseMove({ statement: 'Hm' }, 'eu', 'A', 1, actors)).toThrow();
   });
 });
 
 describe('parseReport', () => {
-  it('normalises scenarios to add up, and falls back to the panel', () => {
+  it('normalises scenarios to add up, and falls back to the simulation', () => {
     const r = parseReport({ scenarios: [{ name: 'A', probability: 0.6 }, { name: 'B', probability: 0.6 }], drivers: [{ text: 'd', actor: 'ghost' }] }, { probability: 0.42 }, new Set(['usa']));
     expect(r.probability).toBe(0.42);
     expect(r.swarm).toBe(0.42);
     expect(r.scenarios.map(s => s.probability)).toEqual([0.5, 0.5]);
     expect(r.drivers[0].actor).toBeNull();
     expect(r.confidence).toBe('medium');
+  });
+});
+
+describe('the story in the report', () => {
+  it('keeps the path in date order, and only known actors and worlds', () => {
+    const r = parseReport({
+      path: [{ date: '2026-12-01', title: 'Deal signed', actors: ['usa', 'ghost'] }, { date: '2026-10-15', title: 'Talks resume' }, { title: '' }],
+      actor_moves: [{ actor: 'usa', prediction: 'Signs late' }, { actor: 'ghost', prediction: 'Boo' }],
+      worlds: [{ world: 'World A', outcome: 'Signed', summary: 'Fast' }, { world: 'Z', outcome: 'Nope' }],
+    }, { probability: 0.5 }, new Set(['usa']), undefined, undefined, new Set(['A', 'B']));
+    expect(r.path.map(p => [p.date, p.title, p.actors])).toEqual([['2026-10-15', 'Talks resume', []], ['2026-12-01', 'Deal signed', ['usa']]]);
+    expect(r.actorMoves).toEqual([{ actor: 'usa', prediction: 'Signs late' }]);
+    expect(r.worlds).toEqual([{ world: 'A', outcome: 'Signed', summary: 'Fast' }]);
   });
 });

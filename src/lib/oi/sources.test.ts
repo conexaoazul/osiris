@@ -74,14 +74,14 @@ describe('parseCites', () => {
 describe('evidenceLedger', () => {
   it('counts the quotes of each source, who made them and which way they pushed, most quoted first', () => {
     const rows = evidenceLedger([
-      { agent: 'agent_1', cites: [{ source: 'w1', quote: 'q', exact: true, push: 'yes' }, { source: 'w2', quote: 'q', exact: false, push: 'no' }] },
-      { agent: 'agent_2', cites: [{ source: 'w1', quote: 'q', exact: true, push: 'yes' }] },
-      { agent: 'agent_1', cites: [{ source: 'w1', quote: 'q', exact: false, push: 'neutral', favors: 'Hold' }] },
-      { agent: 'agent_3' },
+      { actor: 'opec_1', cites: [{ source: 'w1', quote: 'q', exact: true, push: 'yes' }, { source: 'w2', quote: 'q', exact: false, push: 'no' }] },
+      { actor: 'opec_2', cites: [{ source: 'w1', quote: 'q', exact: true, push: 'yes' }] },
+      { actor: 'opec_1', cites: [{ source: 'w1', quote: 'q', exact: false, push: 'neutral', favors: 'Hold' }] },
+      { actor: 'opec_3' },
     ]);
-    expect(rows.map(r => [r.source, r.quoted, r.agents, r.yes, r.no, r.neutral, r.exact])).toEqual([
-      ['w1', 3, ['agent_1', 'agent_2'], 2, 0, 1, 2],
-      ['w2', 1, ['agent_1'], 0, 1, 0, 0],
+    expect(rows.map(r => [r.source, r.quoted, r.actors, r.yes, r.no, r.neutral, r.exact])).toEqual([
+      ['w1', 3, ['opec_1', 'opec_2'], 2, 0, 1, 2],
+      ['w2', 1, ['opec_1'], 0, 1, 0, 0],
     ]);
     expect(rows[0].favors).toEqual({ Hold: 1 });
   });

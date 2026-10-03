@@ -4,11 +4,11 @@
  * A run has a shape, and the camera follows it like a director would:
  *
  *   world   the actors land and their relations arc in: frame them, nearly flat
- *   panel   the panelists appear across the world: widen to take them in, tilt a little
- *   round   each round of debate: tilt to show the arcs' height, swing the bearing
- *           round a quarter turn, and halfway through drift toward where the
- *           exchange is happening
- *   report  the forecast lands: close in on where it plays out
+ *   panel   the cast is chosen: widen a little to take them in, tilt a little
+ *   round   each period of simulated time: tilt to show the arcs' height, swing
+ *           the bearing round a quarter turn, and halfway through drift toward
+ *           where the actors' moves are converging
+ *   report  the prediction lands: close in on where it plays out
  *
  * Between shots the view sways gently around its bearing while the run is
  * live, which is what makes the arcs read as 3D. The moment a person drags,
@@ -83,8 +83,8 @@ export type Beat = 'world' | 'panel' | `round:${number}` | 'report';
 /** Which shot the run is at: none before there is anything to frame. */
 export function beatOf(s: RunState): Beat | null {
   if (s.report) return 'report';
-  if (s.phase === 'simulate' || s.phase === 'report') return `round:${Math.min(s.roundsPlanned || 1, s.rounds.length + 1)}`;
-  if (s.agents.length) return 'panel';
+  if (s.phase === 'simulate' || s.phase === 'report') return `round:${Math.min(s.periods.length || s.periodsPlanned || 1, s.rounds.length + 1)}`;
+  if (s.actors.some(a => a.persona)) return 'panel';
   if (s.actors.length) return 'world';
   return null;
 }
@@ -92,7 +92,9 @@ export function beatOf(s: RunState): Beat | null {
 /** The shot for a beat. `bearing` is where the camera points now, which a round swings on from. */
 export function shotFor(s: RunState, beat: Beat, bearing: number, viewWidth = 1280): Shot | null {
   const actors = placed(s.actors);
-  const everyone = [...actors, ...placed(s.agents)];
+  // The cast frames the simulation; the whole world model frames the start.
+  const cast = placed(s.actors.filter(a => a.persona));
+  const everyone = cast.length >= 2 ? cast : actors;
   if (beat === 'world') {
     const f = frame(actors, viewWidth);
     return f && { ...f, pitch: 15, bearing, duration: 2800 };
@@ -116,16 +118,15 @@ export function shotFor(s: RunState, beat: Beat, bearing: number, viewWidth = 12
 }
 
 /**
- * Halfway through a round, the point the exchange is centred on: the middle of
- * this round's replies. Null when the round has not said enough yet.
+ * Halfway through a period, the point the action is centred on: the middle of
+ * this period's moves between actors. Null when too few have moved yet.
  */
 export function activityCentre(s: RunState, round: number): LngLat | null {
   const where = new Map<string, LngLat>();
   for (const a of s.actors) if (a.lat !== null && a.lng !== null) where.set(`a:${a.id}`, [a.lng, a.lat]);
-  for (const g of s.agents) if (g.lat !== null && g.lng !== null) where.set(`g:${g.id}`, [g.lng, g.lat]);
   const ends: LngLat[] = [];
   for (const l of s.links) {
-    if (l.round !== round || (l.kind !== 'reply' && l.kind !== 'focus')) continue;
+    if (l.round !== round || l.kind !== 'move') continue;
     const a = where.get(l.from), b = where.get(l.to);
     if (a) ends.push(a);
     if (b) ends.push(b);
@@ -215,11 +216,12 @@ export function createDirector(map: MlMap, onFollowChange?: (following: boolean)
       startSway();
       return;
     }
-    // Halfway through a round, drift toward where the exchange is.
+    // Halfway through a period, drift toward where the actors' moves converge.
     if (next.startsWith('round:')) {
       const round = Number(next.slice(6));
-      const said = s.posts.filter(p => p.round === round).length;
-      if (round !== aimedRound && said >= Math.ceil(s.agents.length / 2)) {
+      const moved = s.moves.filter(m => m.period === round).length;
+      const due = s.actors.filter(a => a.persona).length * Math.max(1, s.worlds.length);
+      if (round !== aimedRound && moved >= Math.ceil(due / 2)) {
         aimedRound = round;
         const c = activityCentre(s, round);
         if (c && performance.now() > flyingUntil) {

@@ -128,7 +128,7 @@ export function startPrediction(args: PredictArgs, creds: Credentials, ip: strin
 
 export type Asked = { ok: true; reply: string; target: string } | { ok: false; status: number; error: string };
 
-/** One question to the report agent or a panelist, on the caller's key. */
+/** One question to the report agent or an actor that played, on the caller's key. */
 export async function askPrediction(run: Run, targetRaw: unknown, messageRaw: unknown, creds: Credentials, signal?: AbortSignal, chat?: ChatFn): Promise<Asked> {
   const message = text(messageRaw, 1000);
   if (message.length < 2) return { ok: false, status: 400, error: 'Ask something.' };

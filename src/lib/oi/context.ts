@@ -76,7 +76,7 @@ function newsItem(n: RawNews, id: string): ContextItem {
   const lng = n.place?.lng ?? n.coords?.[1] ?? null;
   const ok = typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng);
   const title = text(n.title, 220, 'Untitled');
-  // The summary, where it says more than the headline: what a panelist can quote besides it.
+  // The summary, where it says more than the headline: what an actor can quote besides it.
   const summary = text(n.summary || n.description, 320, '');
   const url = httpUrl(n.link ?? n.url);
   return {
@@ -112,7 +112,7 @@ export function selectContext(
   const relevant = scored.filter(x => x.s >= 3);
   const picked = relevant.slice(0, limit - 1).map(x => x.n);
 
-  // Almost nothing on topic: add a few of the biggest stories of the moment, so the panel still sees
+  // Almost nothing on topic: add a few of the biggest stories of the moment, so the actors still see
   // the world. Only a few: the research brings the coverage of the question itself, and a headline
   // that has nothing to do with it is no evidence for anything.
   if (picked.length < 3) {

@@ -7,7 +7,7 @@
  * summarised by its editors and linked to the report it cites), the article
  * itself where the publisher serves it (cut to the paragraphs that bear on
  * the question), and background from Wikipedia. Every item keeps its real
- * link, so every quote the panel makes can be opened and checked where it
+ * link, so every quote an actor makes can be opened and checked where it
  * was published. GDELT refuses often under load; when it does, it is left
  * alone for a while and Wikipedia's events carry the coverage.
  *
