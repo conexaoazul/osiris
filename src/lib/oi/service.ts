@@ -159,7 +159,7 @@ export function describe(origin: string) {
   return {
     name: 'OSIRIS OI',
     version: OI_VERSION,
-    about: 'Swarm-intelligence forecasting on live OSIRIS intelligence. Bring your own model key.',
+    about: 'A prediction engine on live OSIRIS intelligence: the actors who decide a question, simulated against each other in parallel worlds. Bring your own model key.',
     credit: CREDIT,
     providers: PROVIDERS.map(p => ({ id: p.id, name: p.name, default_model: p.defaultModel, suggested_models: p.suggested, key_url: p.keyUrl })),
     depths: (Object.keys(DEPTHS) as Depth[]).map(d => ({ id: d, ...DEPTHS[d], model_calls: estimateCalls(d) })),

@@ -60,7 +60,7 @@ export function demoAssist(prompt: string): string {
 
   if (mode === 'forecast' || /\b(forecast|predict|odds|chance of|probability)\b/.test(t)) {
     const q = text.replace(/^(forecast|predict)[:\s-]*/i, '').trim();
-    return json('Starting a forecast. A panel of simulated forecasters will debate it over a few rounds; follow it in the Forecast tab.', [{ tool: 'forecast', args: { question: q.endsWith('?') ? q : `${q}?`, depth: 'quick' } }]);
+    return json('Starting a prediction. OI casts the actors who decide it and plays them out in parallel worlds; follow it in the Forecast tab.', [{ tool: 'forecast', args: { question: q.endsWith('?') ? q : `${q}?`, depth: 'quick' } }]);
   }
   if (/\b(clear|reset|remove)\b.*\b(highlights?|marks?|map)\b/.test(t)) return json('Cleared.', [{ tool: 'clear', args: {} }]);
   if (/what('s| is) (here|in view|on (the|my) screen|happening here)|what am i looking at|\bscan\b/.test(t)) return json('Looking at what is in view.', [{ tool: 'scan', args: {} }], false);

@@ -151,7 +151,7 @@ export function sourceIds(raw: unknown, sources: Set<string>, max = 4): string[]
 
 export interface LedgerRow {
   source: string;
-  /** Times quoted, across every round. */
+  /** Times quoted, across every period of every world. */
   quoted: number;
   /** The actors who quoted it. */
   actors: string[];

@@ -9,12 +9,12 @@
  *     the object search, the engine, and the run's controls;
  *   - on the left, the command column, with the same Forecast / Assist switch
  *     as the docked panel. Forecast is the ask form until there is a run, then
- *     the verdict with the report or the execution trace; Assist is the
+ *     the prediction with the report or the execution trace; Assist is the
  *     conversation, and OI can drive this whole workspace from it;
  *   - in the middle, the stage: the live globe, or for a run its research
- *     graph, the timeline of the debate, or the object tables;
+ *     graph, the timeline of its simulated worlds, or the object tables;
  *   - on the right, once there is a run, whatever object is selected, or the
- *     debate, the panel, the world model and the Q&A.
+ *     simulation feed, the actors, the world model and the Q&A.
  *
  * Keys: 1–4 switch the stage, Ctrl+K (⌘K) or / searches the run, Esc closes
  * the selected object and then the workspace.
@@ -64,7 +64,7 @@ export interface WorkspaceProps {
   /** What the stage shows, which OI can change from the conversation. */
   stage: Stage;
   onStage: (s: Stage) => void;
-  /** The debate, panel, world and Q&A lists for a run, built by the panel so they share its tab state. */
+  /** The simulation, actors, world and Q&A lists for a run, built by the panel so they share its tab state. */
   lists: ReactNode;
   errorBox: ReactNode;
   /** The conversation. */
@@ -91,7 +91,7 @@ function useWindowWidth(): number {
 const STAGE_OPTIONS = (hasRun: boolean) => [
   { value: 'globe' as Stage, label: 'Globe', icon: <Globe2 className="w-3 h-3" />, title: 'The live globe (1)' },
   { value: 'graph' as Stage, label: 'Graph', icon: <Network className="w-3 h-3" />, title: hasRun ? 'The research graph (2)' : 'Run a forecast to see its graph', disabled: !hasRun },
-  { value: 'timeline' as Stage, label: 'Timeline', icon: <GanttChart className="w-3 h-3" />, title: hasRun ? 'The debate over time (3)' : 'Run a forecast to see its timeline', disabled: !hasRun },
+  { value: 'timeline' as Stage, label: 'Timeline', icon: <GanttChart className="w-3 h-3" />, title: hasRun ? 'The simulated worlds over time (3)' : 'Run a forecast to see its timeline', disabled: !hasRun },
   { value: 'table' as Stage, label: 'Table', icon: <Table2 className="w-3 h-3" />, title: hasRun ? 'Every object in tables (4)' : 'Run a forecast to see its objects', disabled: !hasRun },
 ];
 

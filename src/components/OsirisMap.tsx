@@ -95,7 +95,7 @@ interface OsirisMapProps {
   aircraftAirports?: Record<string, Array<{ icao: string; iata?: string; city?: string; lat: number; lng: number }>>;
   /** Hands the page OI's globe layer, so a run draws without re-rendering the map. Null when it goes. */
   onOiGlobe?: (globe: OiGlobe | null) => void;
-  /** A piece of OI's analysis was clicked: an arc ("link:<id>") or a point ("g:<panelist>", "a:<actor>"…); null for empty map. */
+  /** A piece of OI's analysis was clicked: an arc ("link:<id>") or a point ("a:<actor>", "e:<event>"…); null for empty map. */
   onOiSelect?: (key: string | null) => void;
   /** The pointer is over a piece of OI's analysis, or has left it. */
   onOiHover?: (hover: OiHover | null) => void;
@@ -2718,8 +2718,8 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     return () => clearInterval(refresh);
   }, [mapReady, activeLayers.live_clouds, mapStyle]);
 
-  // OSIRIS OI — a forecast's analysis drawn as it happens: actors, panelists
-  // and arcs through the sky (see lib/oi/globe). The page feeds it
+  // OSIRIS OI — a prediction drawn as it happens: actors, the events of the
+  // simulated worlds and arcs through the sky (see lib/oi/globe). The page feeds it
   // run state directly, so the map does not re-render on every event; the
   // layer re-adds itself after a style change.
   useEffect(() => {

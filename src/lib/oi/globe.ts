@@ -25,7 +25,7 @@ import type {
 } from 'maplibre-gl';
 import { ARC_STRIDE, mercator, packArcs, rgb, type ArcSpec, type LngLat } from './arcs';
 import { createDirector } from './camera';
-import { leader, outcomeColor, positionIn, shortAnswer } from './forecast';
+import { outcomeColor, shortAnswer } from './forecast';
 import { brief, relatedLinks } from './research';
 import type { RunState } from './state';
 import type { Link, Move } from './types';

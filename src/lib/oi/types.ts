@@ -197,7 +197,7 @@ export interface Link {
   /** 0..1 */
   strength: number;
   label: string;
-  /** 0 for the world model, else the simulation round that drew it. */
+  /** 0 for the world model, else the period of simulated time that drew it. */
   round: number;
 }
 

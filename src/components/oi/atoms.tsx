@@ -6,13 +6,13 @@
 import { createElement, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Activity, BookOpen, Building2, CandlestickChart, CircleUser, Crown, Database, Eye, Factory, FileText, GitBranch, Globe2, Landmark, Link2,
-  MapPin, MessageSquare, Newspaper, Quote, ScrollText, Signpost, TrendingUp, Users, type LucideIcon, type LucideProps,
+  Activity, BookOpen, Building2, CalendarClock, CandlestickChart, Crown, Database, Factory, FileText, GitBranch, Globe2, Landmark, Link2,
+  MapPin, Newspaper, Orbit, Quote, ScrollText, Signpost, Swords, TrendingUp, Users, Zap, type LucideIcon, type LucideProps,
 } from 'lucide-react';
-import { leader, outcomeColor, postView } from '@/lib/oi/forecast';
+import { leader, outcomeColor, pointView } from '@/lib/oi/forecast';
 import { mentions } from '@/lib/oi/objects';
 import type { RunState } from '@/lib/oi/state';
-import type { Frame, LinkKind, Post } from '@/lib/oi/types';
+import type { Frame, LinkKind, Move, WorldPoint } from '@/lib/oi/types';
 import { LABEL, T, gold, cyan, initials } from './theme';
 
 /** OI's mark in the theme's colours: a core, its ring, and a body in orbit that turns while a run is live. */
@@ -116,15 +116,31 @@ export function Avatar({ name, size = 28, ring }: { name: string; size?: number;
   );
 }
 
-/** A panelist's view in figures, with a dot in its outcome's colour for a choice. */
-export function ViewTag({ post, frame }: { post: Post; frame: Frame | null }) {
-  const lead = frame?.kind === 'choice' && post.shares ? leader(post.shares) : -1;
+/** Where a world stands in figures, with a dot in its outcome's colour for a choice; how it resolved once it has. */
+export function PointTag({ point, frame }: { point: WorldPoint; frame: Frame | null }) {
+  const lead = frame?.kind === 'choice' && point.shares && !point.resolved ? leader(point.shares) : -1;
   return (
-    <span className="inline-flex items-center gap-1.5 h-[20px] px-1.5 rounded border border-[var(--border-secondary)] bg-white/[0.03] text-[10px] font-mono tabular-nums whitespace-nowrap text-[var(--text-primary)]">
+    <span title={point.resolved ? 'Resolved in this world' : 'Where the question stands in this world'}
+      className="inline-flex items-center gap-1.5 h-[20px] px-1.5 rounded border bg-white/[0.03] text-[10px] font-mono tabular-nums whitespace-nowrap text-[var(--text-primary)]"
+      style={{ borderColor: point.resolved ? gold(0.45) : 'var(--border-secondary)' }}>
       {lead >= 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: outcomeColor(lead) }} />}
-      {postView(post, frame)}
+      {point.resolved && <span className="text-[8px] tracking-[0.14em] text-[var(--gold-light)]">RESOLVED</span>}
+      {pointView(point, frame)}
     </span>
   );
+}
+
+/** How an actor's move stands toward the actors it is aimed at, in the arcs' own colours. */
+export const STANCE: Record<Move['stance'], { word: string; color: string }> = {
+  cooperate: { word: 'Cooperates', color: T.support },
+  pressure: { word: 'Presses', color: T.orange },
+  oppose: { word: 'Opposes', color: T.oppose },
+  hold: { word: 'Holds', color: T.neutral },
+};
+
+export function StanceTag({ stance }: { stance: Move['stance'] }) {
+  const st = STANCE[stance];
+  return <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-1 whitespace-nowrap`} style={{ color: st.color }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />{st.word}</span>;
 }
 
 /* ───────────── Object types ───────────── */
@@ -133,14 +149,15 @@ const ACTOR_ICON: Record<string, LucideIcon> = {
   state: Landmark, leader: Crown, organisation: Building2, company: Factory, market: TrendingUp, group: Users, place: MapPin,
 };
 const SOURCE_ICON: Record<string, LucideIcon> = { news: Newspaper, quake: Activity, market: CandlestickChart, data: Database, web: Globe2, wiki: BookOpen };
-export const LINK_ICON: Record<LinkKind, LucideIcon> = { relation: Link2, evidence: FileText, reply: MessageSquare, focus: Eye, cite: Quote };
+export const LINK_ICON: Record<LinkKind, LucideIcon> = { relation: Link2, evidence: FileText, move: Swords, cite: Quote };
 
 /** The icon for an object, from its research key's prefix and its subtype. */
 export function iconFor(key: string, subtype = ''): LucideIcon {
   const prefix = key.split(':')[0];
   if (prefix === 'a') return ACTOR_ICON[subtype] ?? Landmark;
-  if (prefix === 'g') return CircleUser;
   if (prefix === 'c') return SOURCE_ICON[subtype] ?? Newspaper;
+  if (prefix === 'e') return subtype === 'shock' || subtype === 'injected' ? Zap : CalendarClock;
+  if (prefix === 'w') return Orbit;
   if (prefix === 's') return GitBranch;
   if (prefix === 'p') return Signpost;
   if (prefix === 'r') return ScrollText;
@@ -152,18 +169,18 @@ export function TypeIcon({ k, subtype, link, ...rest }: LucideProps & { k: strin
   return createElement(link ? LINK_ICON[link] : iconFor(k, subtype), rest);
 }
 
-/** The accent an object wears: gold for the world and the report, cyan for the panel, the line's own colour for a link. */
+/** The accent an object wears: gold for the world model and the report, cyan for the simulation, the line's own colour for a link. */
 export function accentFor(key: string): string {
   const prefix = key.split(':')[0];
   if (prefix === 'r') return T.goldLight;
-  if (prefix === 'g' || prefix === 'p') return T.cyan;
+  if (prefix === 'w' || prefix === 'e' || prefix === 'p') return T.cyan;
   if (prefix === 'c') return T.body;
   return T.gold;
 }
 
 /**
- * Text with the run's actors and panelists in it made clickable: the same
- * sentence a panelist wrote, but "China" opens China.
+ * Text with the run's actors and sources in it made clickable: the same
+ * sentence an actor said, but "China" opens China.
  */
 export function Mentions({ text, s, onSelect }: { text: string; s: RunState; onSelect: (key: string) => void }) {
   const parts = mentions(text, s);

@@ -597,7 +597,7 @@ export const API_GROUPS: ApiGroup[] = [
     id: 'oi',
     title: 'OI (Assist & Prediction)',
     blurb:
-      'OI Assist, a model on your own key that works the map in conversation, and swarm-intelligence forecasting on live OSIRIS intelligence: a simulated panel of AI forecasters debates a question over rounds, and a report agent writes a calibrated forecast. Your model key is sent in headers and never stored. Also served as an MCP server at /api/mcp; see OI guide.',
+      'OI Assist, a model on your own key that works the map in conversation, and a prediction engine on live OSIRIS intelligence: it casts the actors who decide a question, plays them against each other over dated periods in several parallel worlds, and a report agent writes the predicted path with a calibrated figure. Your model key is sent in headers and never stored. Also served as an MCP server at /api/mcp; see OI guide.',
     endpoints: [
       {
         path: '/api/oi',
@@ -620,11 +620,11 @@ export const API_GROUPS: ApiGroup[] = [
       {
         path: '/api/oi/runs',
         method: 'POST',
-        summary: 'Start a forecast. Answers 202 at once with the run id, a link to watch it on the globe, and a run token for steering it.',
+        summary: 'Start a prediction. Answers 202 at once with the run id, a link to watch it on the globe, and a run token for steering it.',
         returns: ['id', 'status', 'phase', 'watch_url', 'events_url', 'run_token', 'progress'],
         headers: { 'X-OI-Provider': 'openai', 'X-OI-Key': '$YOUR_MODEL_KEY', 'X-OI-Model': 'gpt-5-mini' },
         requiresAuth: true,
-        notes: '`depth` is `quick` (6 agents × 2 rounds, about 16 model calls), `standard` (10 × 3, about 34) or `deep` (16 × 4, about 68). `seed` takes up to 100,000 characters of your own data (about 25,000 input tokens), read once by the world model; with `seed_scope: "panel"` every forecaster in every round and the report agent also read its first 8,000 characters, at about 2,000 more input tokens a call. `use_feeds` (default true) has the run research the question first (recent news with its links, from GDELT and Wikipedia’s Current events, and Wikipedia background) and read OSIRIS news, quakes and markets; panelists quote these sources by id. Keep `run_token`: it is not shown again. Two runs at once and eight per ten minutes per address.',
+        notes: '`depth` is `quick` (4 actors × 3 periods × 2 worlds, about 34 model calls), `standard` (6 × 4 × 3, about 88) or `deep` (7 × 4 × 4, about 132). A world that settles early stops spending calls. `seed` takes up to 100,000 characters of your own data (about 25,000 input tokens), read once by the world model; with `seed_scope: "panel"` every actor’s move and the report agent also read its first 8,000 characters, at about 2,000 more input tokens a call. `use_feeds` (default true) has the run research the question first (recent news with its links, from GDELT and Wikipedia’s Current events, and Wikipedia background) and read OSIRIS news, quakes and markets; the actors quote these sources by id. Keep `run_token`: it is not shown again. Two runs at once and eight per ten minutes per address.',
         bodyExample: `{
   "question": "Will Brent crude settle above $90 on 31 December 2026?",
   "depth": "standard",
@@ -634,18 +634,18 @@ export const API_GROUPS: ApiGroup[] = [
       {
         path: '/api/oi/runs/{id}',
         method: 'GET',
-        summary: 'A run summary: phase, the panel round by round, and once written, the report with drivers, scenarios, signposts and dissent, every driver and each panelist’s latest post with the sources it quotes.',
+        summary: 'A run summary: phase and progress, the simulated periods, the worlds pooled period by period, each world with its events, the cast with their personas, and once written, the report: the predicted path, what each actor does, how each world ended, drivers, scenarios, signposts and dissent, with the sources they quote.',
         params: [
           { name: 'wait', desc: 'Seconds (up to 55) to wait for the run to finish before answering.', example: '30' },
           { name: 'view', desc: '`full` returns every event so far, to rebuild the whole run.', example: 'full' },
         ],
-        returns: ['id', 'status', 'phase', 'kind', 'answer', 'probability_pct', 'outcomes', 'unit', 'proposition', 'rounds', 'report', 'actors', 'panel', 'sources', 'usage', 'watch_url'],
-        notes: '`kind` is `binary` (a probability of YES), `choice` (a share for each of `outcomes`) or `number` (an `estimate` with an 80% `low`–`high` range, in `unit`); `answer` says it in words either way. Anyone with the id can read a run: that is how a forecast is shared. Runs are kept for three hours after they finish.',
+        returns: ['id', 'status', 'phase', 'kind', 'answer', 'probability_pct', 'outcomes', 'unit', 'proposition', 'progress', 'periods', 'pooled', 'report', 'actors', 'worlds', 'sources', 'injected', 'usage', 'watch_url'],
+        notes: '`kind` is `binary` (a probability of YES), `choice` (a share for each of `outcomes`) or `number` (an `estimate` with an 80% `low`–`high` range, in `unit`); `answer` says it in words either way. Anyone with the id can read a run: that is how a prediction is shared. Runs are kept for three hours after they finish.',
       },
       {
         path: '/api/oi/runs/{id}/events',
         method: 'GET',
-        summary: 'The run as it happens, over Server-Sent Events: phases, actors and relations, panelists, every post and reply, round statistics, injected events and the report.',
+        summary: 'The run as it happens, over Server-Sent Events: phases, actors and relations, the cast and the simulated clock, every move, event and world standing, the worlds pooled after each period, injected events and the report.',
         returns: ['…SSE event stream'],
         notes: 'Each event is `id: <seq>` and `data: <json>`, with a `t` field naming its type. The stream replays from the start, follows live, and closes after `end`. Reconnect with `Last-Event-ID` (or `?after=<seq>`) to resume.',
       },
@@ -665,21 +665,21 @@ export const API_GROUPS: ApiGroup[] = [
       {
         path: '/api/oi/runs/{id}/ask',
         method: 'POST',
-        summary: 'Question the report agent, or any panelist by id, about a run. Uses your key again.',
+        summary: 'Question the report agent, or any actor that played (by id), about a run. Uses your key again.',
         returns: ['id', 'target', 'reply'],
         headers: { 'X-OI-Key': '$YOUR_MODEL_KEY' },
         requiresAuth: true,
         notes: "Provider and model default to the run's own; send `X-OI-Provider` and `X-OI-Model` to ask on another. 20 questions per minute per address.",
         bodyExample: `{
   "target": "report",
-  "message": "What would move this forecast most?"
+  "message": "What would change this prediction most?"
 }`,
       },
       {
         path: '/api/oi/runs/{id}/inject',
         method: 'POST',
-        summary: "God's-eye view: drop an event into a running simulation. The panel takes it up at the start of its next round.",
-        returns: ['id', 'queued', 'lands_in_round'],
+        summary: "God's-eye view: drop an event into a running simulation. It happens in every world in the next period of simulated time.",
+        returns: ['id', 'queued', 'lands_in_period'],
         headers: { 'X-OI-Run-Token': '$RUN_TOKEN' },
         requiresAuth: true,
         notes: 'Needs the run token from the start response. Up to eight events per run; refused once the report is being written.',
@@ -690,7 +690,7 @@ export const API_GROUPS: ApiGroup[] = [
       {
         path: '/api/oi/runs/{id}',
         method: 'DELETE',
-        summary: 'Cancel a running forecast.',
+        summary: 'Cancel a running prediction.',
         returns: ['id', 'cancelled', 'status'],
         headers: { 'X-OI-Run-Token': '$RUN_TOKEN' },
         requiresAuth: true,

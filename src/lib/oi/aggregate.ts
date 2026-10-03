@@ -53,7 +53,7 @@ export function poolShares(views: { shares: number[]; confidence: number }[], n:
   return den && total ? out.map(x => r3(x / total)) : out.map(() => r3(1 / Math.max(1, n)));
 }
 
-/** The panel's round, whatever kind of answer the question wants. */
+/** The worlds pooled after a period, whatever kind of answer the question wants. */
 export function roundStatFor(
   round: number,
   posts: { probability: number; confidence: number; shares?: number[]; estimate?: { value: number; low: number; high: number } }[],

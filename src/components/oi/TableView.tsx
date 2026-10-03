@@ -2,22 +2,21 @@
 /**
  * OSIRIS OI: the table view.
  *
- * Every object of a kind in one sortable table: the panelists with how they
- * moved, the actors with how connected they are, the sources with what cited
- * them, and every link. A row opens its object.
+ * Every object of a kind in one sortable table: the actors with what they
+ * did, every move made in every world, the events the worlds produced, the
+ * sources with who quoted them, and every link. A row opens its object (a
+ * move opens the actor that made it).
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Search } from 'lucide-react';
-import { formatAmount, postView } from '@/lib/oi/forecast';
 import { LINK_LABEL } from '@/lib/oi/objects';
 import { nodeName } from '@/lib/oi/research';
-import type { RunState } from '@/lib/oi/state';
-import { LABEL, SOLID, T, ago, pct, toneColor } from './theme';
-import { Empty, Segmented, TypeIcon, ViewTag, accentFor } from './atoms';
-import { Spark } from './lists';
-import { SOURCE_KIND } from './quotes';
+import { worldName, type RunState } from '@/lib/oi/state';
+import { LABEL, SOLID, T, ago, toneColor } from './theme';
+import { Empty, Segmented, StanceTag, TypeIcon, accentFor } from './atoms';
+import { PushTag, SOURCE_KIND } from './quotes';
 
-type Kind = 'panelists' | 'actors' | 'sources' | 'links';
+type Kind = 'actors' | 'moves' | 'events' | 'sources' | 'links';
 
 interface Column<R> {
   id: string;
@@ -29,7 +28,15 @@ interface Column<R> {
   cell: (r: R) => ReactNode;
 }
 
-interface TableSpec<R> { rows: R[]; key: (r: R) => string; text: (r: R) => string; columns: Column<R>[] }
+interface TableSpec<R> {
+  rows: R[];
+  /** What a row opens. */
+  key: (r: R) => string;
+  /** The row's own identity, where several rows open the same object. */
+  id?: (r: R) => string;
+  text: (r: R) => string;
+  columns: Column<R>[];
+}
 
 const num = (v: ReactNode) => <span className="font-mono tabular-nums">{v}</span>;
 
@@ -47,41 +54,48 @@ function NameCell({ k, subtype, title, sub }: { k: string; subtype?: string; tit
 
 function specs(s: RunState) {
   const touching = (k: string) => s.links.filter(l => l.from === k || l.to === k);
-  const panelists: TableSpec<RunState['agents'][number]> = {
-    rows: s.agents, key: a => `g:${a.id}`, text: a => `${a.name} ${a.role} ${a.place}`,
-    columns: [
-      { id: 'name', label: 'Panelist', width: 'minmax(170px,2fr)', sort: a => a.name, cell: a => <NameCell k={`g:${a.id}`} title={a.name} sub={a.role} /> },
-      { id: 'place', label: 'Location', width: 'minmax(90px,1fr)', sort: a => a.place, cell: a => <span className="truncate text-[var(--text-secondary)]">{a.place || '—'}</span> },
-      { id: 'prior', label: 'Prior', width: '62px', align: 'right', sort: a => a.prior, cell: a => num(s.frame?.kind === 'binary' ? pct(a.prior) : '—') },
-      {
-        id: 'latest', label: 'Latest', width: 'minmax(92px,1fr)', sort: a => { const p = s.posts.filter(x => x.agent === a.id).at(-1); return p ? (p.estimate?.value ?? p.shares?.[0] ?? p.probability) : -Infinity; },
-        cell: a => {
-          const p = s.posts.filter(x => x.agent === a.id).at(-1);
-          if (!p) return <span className="text-[var(--text-muted)]">—</span>;
-          // A number's range would crowd the column: the estimate, with the range on hover.
-          return s.frame?.kind === 'number' && p.estimate
-            ? <span className="font-mono tabular-nums text-[var(--text-primary)]" title={postView(p, s.frame)}>{formatAmount(p.estimate.value)}</span>
-            : <ViewTag post={p} frame={s.frame} />;
-        },
-      },
-      { id: 'path', label: 'Path', width: '64px', sort: a => s.posts.filter(x => x.agent === a.id).length, cell: a => <Spark s={s} agent={a.id} on={false} width={52} /> },
-      { id: 'conf', label: 'Conf.', width: '58px', align: 'right', sort: a => s.posts.filter(x => x.agent === a.id).at(-1)?.confidence ?? -1, cell: a => num(pct(s.posts.filter(x => x.agent === a.id).at(-1)?.confidence)) },
-      { id: 'replies', label: 'Replies', width: '62px', align: 'right', sort: a => s.posts.filter(x => x.agent === a.id).reduce((n, p) => n + p.replies.length, 0), cell: a => num(s.posts.filter(x => x.agent === a.id).reduce((n, p) => n + p.replies.length, 0)) },
-    ],
-  };
+  const movesOf = (id: string) => s.moves.filter(m => m.actor === id);
+  const hard = (id: string) => movesOf(id).filter(m => m.stance === 'pressure' || m.stance === 'oppose').length;
+  const quotes = (id: string) => movesOf(id).reduce((n, m) => n + (m.cites?.length ?? 0), 0);
+  const name = (id: string) => s.actors.find(a => a.id === id)?.name ?? id;
   const actors: TableSpec<RunState['actors'][number]> = {
-    rows: s.actors, key: a => `a:${a.id}`, text: a => `${a.name} ${a.kind} ${a.role} ${a.place}`,
+    // The cast first, in the order they were cast; the rest of the world model after.
+    rows: [...s.actors.filter(a => a.persona), ...s.actors.filter(a => !a.persona)], key: a => `a:${a.id}`, text: a => `${a.name} ${a.kind} ${a.role} ${a.place} ${a.persona?.goal ?? ''}`,
     columns: [
-      { id: 'name', label: 'Actor', width: 'minmax(170px,2fr)', sort: a => a.name, cell: a => <NameCell k={`a:${a.id}`} subtype={a.kind} title={a.name} sub={a.role} /> },
+      { id: 'name', label: 'Actor', width: 'minmax(170px,2fr)', sort: a => a.name, cell: a => <NameCell k={`a:${a.id}`} subtype={a.kind} title={a.name} sub={a.persona?.goal || a.role} /> },
       { id: 'kind', label: 'Type', width: '96px', sort: a => a.kind, cell: a => <span className={`${LABEL} !text-[8.5px] text-[var(--text-secondary)]`}>{a.kind}</span> },
-      { id: 'place', label: 'Location', width: 'minmax(90px,1fr)', sort: a => a.place, cell: a => <span className="truncate text-[var(--text-secondary)]">{a.place || '—'}</span> },
+      { id: 'plays', label: 'Plays', width: '56px', sort: a => (a.persona ? 1 : 0), cell: a => a.persona ? <span className={`${LABEL} !text-[8px] text-[var(--cyan-primary)]`}>Yes</span> : <span className="text-[var(--text-muted)]">—</span> },
       {
-        id: 'lean', label: 'Lean', width: '70px', align: 'right', sort: a => a.lean,
+        id: 'lean', label: 'Lean', width: '64px', align: 'right', sort: a => a.lean,
         cell: a => s.frame?.kind === 'choice' ? num('—') : <span className="font-mono tabular-nums" style={{ color: a.lean > 0.15 ? T.gold : a.lean < -0.15 ? T.cyan : T.body }}>{a.lean > 0 ? '+' : ''}{a.lean.toFixed(2)}</span>,
       },
+      { id: 'moves', label: 'Moves', width: '60px', align: 'right', sort: a => movesOf(a.id).length, cell: a => num(movesOf(a.id).length || '—') },
+      { id: 'hard', label: 'Presses', width: '66px', align: 'right', sort: a => hard(a.id), cell: a => num(hard(a.id) || '—') },
+      { id: 'quotes', label: 'Quotes', width: '62px', align: 'right', sort: a => quotes(a.id), cell: a => num(quotes(a.id) || '—') },
       { id: 'links', label: 'Links', width: '56px', align: 'right', sort: a => touching(`a:${a.id}`).length, cell: a => num(touching(`a:${a.id}`).length) },
-      { id: 'evidence', label: 'Evidence', width: '70px', align: 'right', sort: a => touching(`a:${a.id}`).filter(l => l.kind === 'evidence').length, cell: a => num(touching(`a:${a.id}`).filter(l => l.kind === 'evidence').length) },
-      { id: 'weighed', label: 'Weighed', width: '68px', align: 'right', sort: a => touching(`a:${a.id}`).filter(l => l.kind === 'focus').length, cell: a => num(touching(`a:${a.id}`).filter(l => l.kind === 'focus').length) },
+    ],
+  };
+  const moves: TableSpec<RunState['moves'][number]> = {
+    rows: s.moves, key: m => `a:${m.actor}`, id: m => m.id, text: m => `${name(m.actor)} ${m.action} ${m.statement} ${m.targets.map(name).join(' ')} world ${m.world}`,
+    columns: [
+      { id: 'period', label: 'P', width: '40px', align: 'right', sort: m => m.period * 100 + m.world.charCodeAt(0), cell: m => num(m.period) },
+      { id: 'world', label: 'World', width: '64px', sort: m => m.world, cell: m => <span className={`${LABEL} !text-[8.5px] text-[var(--cyan-primary)]`}>{m.world}</span> },
+      { id: 'actor', label: 'Actor', width: 'minmax(130px,1.2fr)', sort: m => name(m.actor), cell: m => <NameCell k={`a:${m.actor}`} subtype={s.actors.find(a => a.id === m.actor)?.kind} title={name(m.actor)} /> },
+      { id: 'stance', label: 'Stance', width: '96px', sort: m => m.stance, cell: m => <StanceTag stance={m.stance} /> },
+      { id: 'action', label: 'Does', width: 'minmax(200px,3fr)', sort: m => m.action, cell: m => <span className="truncate text-[var(--text-primary)]" title={m.action}>{m.action}</span> },
+      { id: 'targets', label: 'Aimed at', width: 'minmax(100px,1fr)', sort: m => m.targets.map(name).join(', '), cell: m => <span className="truncate text-[var(--text-secondary)]">{m.targets.map(name).join(', ') || '—'}</span> },
+      { id: 'quotes', label: 'Quotes', width: '60px', align: 'right', sort: m => m.cites?.length ?? 0, cell: m => num(m.cites?.length || '—') },
+    ],
+  };
+  const events: TableSpec<RunState['events'][number]> = {
+    rows: s.events, key: e => `e:${e.id}`, text: e => `${e.title} ${e.detail} ${e.place} world ${e.world}`,
+    columns: [
+      { id: 'date', label: 'Date', width: '92px', sort: e => e.date, cell: e => <span className="font-mono tabular-nums text-[var(--text-secondary)]">{e.date}</span> },
+      { id: 'world', label: 'World', width: '64px', sort: e => e.world, cell: e => <span className={`${LABEL} !text-[8.5px] text-[var(--cyan-primary)]`} title={worldName(e.world)}>{e.world}</span> },
+      { id: 'title', label: 'Event', width: 'minmax(220px,3fr)', sort: e => e.title, cell: e => <NameCell k={`e:${e.id}`} subtype={e.kind} title={e.title} sub={e.actors.map(name).join(', ')} /> },
+      { id: 'kind', label: 'Kind', width: '80px', sort: e => e.kind, cell: e => <span className={`${LABEL} !text-[8.5px]`} style={{ color: e.kind === 'event' ? T.body : T.orange }}>{e.kind === 'shock' ? 'Surprise' : e.kind === 'injected' ? 'Injected' : 'Event'}</span> },
+      { id: 'push', label: 'Pushes', width: '104px', sort: e => e.push, cell: e => <PushTag c={e} frame={s.frame} /> },
+      { id: 'place', label: 'Where', width: 'minmax(80px,1fr)', sort: e => e.place, cell: e => <span className="truncate text-[var(--text-secondary)]">{e.place || '—'}</span> },
     ],
   };
   const sources: TableSpec<RunState['context'][number]> = {
@@ -91,6 +105,7 @@ function specs(s: RunState) {
       { id: 'kind', label: 'Kind', width: '84px', sort: c => c.kind, cell: c => <span className={`${LABEL} !text-[8.5px] text-[var(--text-secondary)]`}>{SOURCE_KIND[c.kind] ?? c.kind}</span> },
       { id: 'place', label: 'Location', width: 'minmax(80px,1fr)', sort: c => c.place, cell: c => <span className="truncate text-[var(--text-secondary)]">{c.place || '—'}</span> },
       { id: 'age', label: 'Age', width: '64px', align: 'right', sort: c => Date.parse(c.published) || 0, cell: c => num(ago(c.published) || '—') },
+      { id: 'quoted', label: 'Quoted', width: '60px', align: 'right', sort: c => s.links.filter(l => l.kind === 'cite' && l.to === `c:${c.id}`).length, cell: c => num(s.links.filter(l => l.kind === 'cite' && l.to === `c:${c.id}`).length || '—') },
       { id: 'cited', label: 'Cited', width: '54px', align: 'right', sort: c => touching(`c:${c.id}`).length, cell: c => num(touching(`c:${c.id}`).length || '—') },
     ],
   };
@@ -102,18 +117,18 @@ function specs(s: RunState) {
         id: 'kind', label: 'Link', width: '108px', sort: l => `${l.kind}${l.tone}`,
         cell: l => (
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3 h-[2px] rounded-full" style={{ background: toneColor(l.tone), opacity: l.kind === 'evidence' ? 0.6 : 1 }} />
-            <span className={`${LABEL} !text-[8.5px]`} style={{ color: toneColor(l.tone) }}>{LINK_LABEL[l.kind]}</span>
+            <span className="w-3 h-[2px] rounded-full" style={{ background: l.kind === 'cite' ? T.body : toneColor(l.tone), opacity: l.kind === 'evidence' ? 0.6 : 1 }} />
+            <span className={`${LABEL} !text-[8.5px]`} style={{ color: l.kind === 'cite' ? T.body : toneColor(l.tone) }}>{LINK_LABEL[l.kind]}</span>
           </span>
         ),
       },
       { id: 'to', label: 'To', width: 'minmax(120px,1.4fr)', sort: l => nodeName(s, l.to), cell: l => <span className="truncate text-[var(--text-primary)]">{nodeName(s, l.to)}</span> },
       { id: 'strength', label: 'Str.', width: '52px', align: 'right', sort: l => l.strength, cell: l => num(Math.round(l.strength * 100)) },
-      { id: 'round', label: 'Rnd', width: '46px', align: 'right', sort: l => l.round, cell: l => num(l.round || 'W') },
-      { id: 'label', label: 'Says', width: 'minmax(140px,2fr)', sort: l => l.label, cell: l => <span className="truncate text-[var(--text-muted)]">{l.kind === 'focus' ? '—' : l.label || '—'}</span> },
+      { id: 'round', label: 'When', width: '62px', align: 'right', sort: l => l.round, cell: l => num(l.from === 'r:report' ? 'Report' : l.round ? `${l.id.split(':')[1]} · P${l.round}` : 'Model') },
+      { id: 'label', label: 'Says', width: 'minmax(140px,2fr)', sort: l => l.label, cell: l => <span className="truncate text-[var(--text-muted)]" title={l.label}>{l.label || '—'}</span> },
     ],
   };
-  return { panelists, actors, sources, links };
+  return { actors, moves, events, sources, links };
 }
 
 function Table<R>({ spec, selected, onSelect, query }: { spec: TableSpec<R>; selected: string | null; onSelect: (k: string | null) => void; query: string }) {
@@ -149,7 +164,7 @@ function Table<R>({ spec, selected, onSelect, query }: { spec: TableSpec<R>; sel
         const k = spec.key(r);
         const on = selected === k;
         return (
-          <button key={k} role="row" onClick={() => onSelect(on ? null : k)} aria-selected={on}
+          <button key={spec.id?.(r) ?? k} role="row" onClick={() => onSelect(on ? null : k)} aria-selected={on}
             className={`grid w-full items-center text-left text-[11px] border-b border-[var(--border-secondary)] transition-colors hover:bg-[var(--hover-accent)] ${on ? 'bg-[var(--hover-accent)]' : ''}`}
             style={{ gridTemplateColumns: template, boxShadow: on ? `inset 2px 0 0 ${T.gold}` : undefined }}>
             {spec.columns.map(c => (
@@ -164,10 +179,10 @@ function Table<R>({ spec, selected, onSelect, query }: { spec: TableSpec<R>; sel
 }
 
 export function TableView({ s, selected, onSelect }: { s: RunState; selected: string | null; onSelect: (k: string | null) => void }) {
-  const [kind, setKind] = useState<Kind>('panelists');
+  const [kind, setKind] = useState<Kind>('actors');
   const [query, setQuery] = useState('');
   const all = useMemo(() => specs(s), [s]);
-  const counts: Record<Kind, number> = { panelists: s.agents.length, actors: s.actors.length, sources: s.context.length, links: s.links.length };
+  const counts: Record<Kind, number> = { actors: s.actors.length, moves: s.moves.length, events: s.events.length, sources: s.context.length, links: s.links.length };
   // On a narrow stage the tabs drop their counts (the title above still has the current one).
   const head = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
@@ -185,7 +200,7 @@ export function TableView({ s, selected, onSelect }: { s: RunState; selected: st
           <div className="hud-text text-[10px] text-[var(--gold-primary)]">Objects</div>
           <div className="mt-0.5 text-[9px] font-mono tracking-[0.14em] text-[var(--text-muted)]">{counts[kind]} {kind.toUpperCase()}</div>
         </div>
-        <div className="flex-1 min-w-0 max-w-[460px]">
+        <div className="flex-1 min-w-0 max-w-[560px]">
           <Segmented id="table" size="sm" value={kind} onChange={k => { setKind(k); setQuery(''); }} options={(Object.keys(counts) as Kind[]).map(k => ({ value: k, label: narrow ? k : `${k} ${counts[k]}`, title: `${counts[k]} ${k}` }))} />
         </div>
         <label className={`ml-auto relative flex-shrink-0 ${narrow ? 'w-28' : 'w-44'}`}>
@@ -195,8 +210,9 @@ export function TableView({ s, selected, onSelect }: { s: RunState; selected: st
         </label>
       </div>
       <div className="flex-1 min-h-0 overflow-auto styled-scrollbar">
-        {kind === 'panelists' && <Table spec={all.panelists} selected={selected} onSelect={onSelect} query={query} />}
         {kind === 'actors' && <Table spec={all.actors} selected={selected} onSelect={onSelect} query={query} />}
+        {kind === 'moves' && <Table spec={all.moves} selected={selected} onSelect={onSelect} query={query} />}
+        {kind === 'events' && <Table spec={all.events} selected={selected} onSelect={onSelect} query={query} />}
         {kind === 'sources' && <Table spec={all.sources} selected={selected} onSelect={onSelect} query={query} />}
         {kind === 'links' && <Table spec={all.links} selected={selected} onSelect={onSelect} query={query} />}
       </div>

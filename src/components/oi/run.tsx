@@ -1,22 +1,22 @@
 'use client';
 /**
- * OSIRIS OI: a run at a glance: where it is, its controls, and the verdict
- * so far with how it got there.
+ * OSIRIS OI: a run at a glance: where it is, its controls, and the
+ * prediction so far with how it got there and where each world stands.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, Check, Crosshair, Square, Zap } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
-import { currentAnswer, type RunState } from '@/lib/oi/state';
+import { currentAnswer, latestPoints, type RunState } from '@/lib/oi/state';
 import { formatAmount, leader, outcomeColor, positionIn } from '@/lib/oi/forecast';
 import { KIND_LABEL, LABEL, T, fit, gold, pct, smooth } from './theme';
-import { Overline, TextButton } from './atoms';
+import { Overline, PointTag, TextButton } from './atoms';
 
 const PHASES: { id: RunState['phase']; label: string }[] = [
-  { id: 'context', label: 'Feeds' },
+  { id: 'context', label: 'Research' },
   { id: 'graph', label: 'World' },
-  { id: 'agents', label: 'Panel' },
-  { id: 'simulate', label: 'Debate' },
+  { id: 'agents', label: 'Cast' },
+  { id: 'simulate', label: 'Simulate' },
   { id: 'report', label: 'Report' },
 ];
 
@@ -76,13 +76,13 @@ export function StatusLine({ s }: { s: RunState }) {
       <p role="status" className="flex items-center gap-2 text-[11px] min-w-0 text-[var(--text-secondary)]">
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[var(--alert-green)] animate-osiris-pulse" />
         <span className="truncate min-w-0">{s.phaseLabel || 'Starting'}</span>
-        {thinking > 0 && <span className="whitespace-nowrap font-mono text-[9.5px] tracking-[0.1em] text-[var(--cyan-primary)]">{thinking} THINKING</span>}
+        {thinking > 0 && <span className="whitespace-nowrap font-mono text-[9.5px] tracking-[0.1em] text-[var(--cyan-primary)]" title="Actors deciding their move, across the worlds">{thinking} DECIDING</span>}
       </p>
     );
   }
   if (s.status === 'failed') return <p role="status" className="text-[11px] text-[var(--alert-red)] truncate">{s.message || 'The run failed.'}</p>;
   if (s.status === 'cancelled') return <p role="status" className="text-[11px] text-[var(--text-muted)]">Stopped.</p>;
-  return <p role="status" className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"><Check className="w-3.5 h-3.5 text-[var(--alert-green)]" /> Forecast complete</p>;
+  return <p role="status" className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"><Check className="w-3.5 h-3.5 text-[var(--alert-green)]" /> Prediction complete</p>;
 }
 
 export function Controls({ s, oi, focus, onFocus, following, onFollow }: { s: RunState; oi: OiClient; focus?: boolean; onFocus?: () => void; following?: boolean; onFollow?: () => void }) {
@@ -131,7 +131,7 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
   const frame = s.frame;
   const last = s.rounds[s.rounds.length - 1] ?? null;
   const final = Boolean(s.report);
-  const caption = final ? 'Forecast' : last ? `Panel · round ${last.round} of ${s.roundsPlanned}` : s.status === 'running' ? 'Forming' : 'Forecast';
+  const caption = final ? 'Prediction' : last ? `${s.worlds.length} worlds · period ${last.round} of ${s.periodsPlanned}` : s.status === 'running' ? 'Forming' : 'Prediction';
 
   let value: number | null = null;
   let format = (v: number) => `${Math.round(v * 100)}`;
@@ -200,8 +200,8 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
       <div>
         <div className="relative h-5">
           <span className="absolute top-[9px] inset-x-0 h-[2px] rounded-full bg-white/[0.07]" />
-          {last && <motion.span className="absolute top-[7px] h-[6px] rounded-sm" initial={false} animate={{ left: `${last.p25 * 100}%`, width: `${Math.max(1, (last.p75 - last.p25) * 100)}%` }} transition={{ duration: 0.7 }}
-            style={{ background: gold(0.2), boxShadow: `inset 0 0 0 1px ${gold(0.4)}` }} title="The middle half of the panel" />}
+          {last && <motion.span className="absolute top-[7px] h-[6px] rounded-sm" initial={false} animate={{ left: `${last.min * 100}%`, width: `${Math.max(1, (last.max - last.min) * 100)}%` }} transition={{ duration: 0.7 }}
+            style={{ background: gold(0.2), boxShadow: `inset 0 0 0 1px ${gold(0.4)}` }} title="The range across the worlds" />}
           <span className="absolute top-[5px] w-px h-[10px] bg-[var(--cyan-primary)]" style={{ left: `${frame.baseRate * 100}%` }} title={`Base rate ${pct(frame.baseRate)}`} />
           {p !== null && <motion.span className="absolute top-[2px] w-[2px] h-4 -ml-px rounded-full" initial={false} animate={{ left: `${p * 100}%` }} transition={{ duration: 0.7, ease: 'easeOut' }}
             style={{ background: T.goldLight, boxShadow: `0 0 10px ${gold(0.8)}` }} />}
@@ -214,8 +214,9 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
   }
 
   const shown = useTween(value);
+  const standing = latestPoints(s);
   return (
-    <section className="flex flex-col gap-3.5" aria-label="Forecast">
+    <section className="flex flex-col gap-3.5" aria-label="Prediction">
       <div className="flex items-end gap-4">
         <div className="min-w-0 flex-1">
           <Overline>{caption}</Overline>
@@ -228,6 +229,17 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
         <Trajectory s={s} width={large ? 140 : 128} />
       </div>
       {detail}
+      {standing.size > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label="Where each world stands">
+          <span className={`${LABEL} !text-[8px] text-[var(--text-muted)] mr-0.5`}>Worlds</span>
+          {s.worlds.map(w => {
+            const p = standing.get(w);
+            return p
+              ? <span key={w} className="inline-flex items-center gap-1"><span className="text-[9px] font-mono text-[var(--cyan-primary)]">{w}</span><PointTag point={p} frame={frame} /></span>
+              : <span key={w} className="text-[9px] font-mono text-[var(--text-muted)]">{w} —</span>;
+          })}
+        </div>
+      )}
     </section>
   );
 }
@@ -300,7 +312,7 @@ export function InjectBox({ oi, s }: { oi: OiClient; s: RunState }) {
   const send = async () => {
     if (text.trim().length < 3) return;
     const err = await oi.inject(text.trim());
-    setMsg(err ?? 'Queued. The panel takes it up at the start of the next round.');
+    setMsg(err ?? 'Queued. It happens in every world in the next period of simulated time.');
     if (!err) setText('');
     setTimeout(() => setMsg(''), 3500);
   };

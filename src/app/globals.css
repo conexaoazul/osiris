@@ -2501,16 +2501,14 @@ html[data-oi-theater] [data-map-controls] {
   transition: opacity 0.3s ease;
 }
 
-/* OI's research graph: marks fade in as the run finds them, "weighing" edges march toward
-   the actor, a thinking panelist pings. Fading stroke-opacity leaves opacity to the dimming. */
+/* OI's research graph: marks fade in as the run finds them, an actor deciding its move pings.
+   Fading stroke-opacity leaves opacity to the dimming. */
 @keyframes oi-graph-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes oi-edge-in { from { stroke-opacity: 0; } to { stroke-opacity: 1; } }
-@keyframes oi-graph-march { to { stroke-dashoffset: -16; } }
 @keyframes oi-graph-ping { from { transform: scale(0.75); opacity: 0.9; } to { transform: scale(1.6); opacity: 0; } }
 g.oi-graph-in { animation: oi-graph-in 0.7s ease-out both; }
 path.oi-graph-in { animation: oi-edge-in 0.9s ease-out both; }
-path.oi-graph-in.oi-graph-march { animation: oi-edge-in 0.9s ease-out both, oi-graph-march 1.1s linear infinite; }
 .oi-graph-ping { transform-box: fill-box; transform-origin: center; animation: oi-graph-ping 1.6s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  path.oi-graph-in.oi-graph-march, .oi-graph-ping { animation: none; }
+  .oi-graph-ping { animation: none; }
 }

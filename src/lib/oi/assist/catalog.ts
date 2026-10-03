@@ -315,6 +315,6 @@ export const PANELS: Record<string, string> = {
   intel: 'OSINT recon tools (IP, domain, username lookups)',
   layers: 'the layer panel',
   directions: 'driving directions',
-  forecast: 'the OI forecast panel (the forecasting swarm)',
+  forecast: 'the OI forecast panel (the prediction engine)',
   workspace: 'the full-screen OI workspace for the current forecast',
 };

@@ -5,21 +5,23 @@
  * Whatever is selected, from the globe, the graph, the timeline, the table or
  * a list, opens here as an object: its type and identity, its properties, and
  * everything it is linked to, grouped by kind of link, each a way on to the
- * next object. A panelist also shows what they said round by round, with the
- * quotes behind it; a source shows who quoted it and what the report rests on
- * it; a link shows the words and turns it was drawn from. Together they make
- * a thread a reader can follow from the report back to the words it came from.
+ * next object. An actor shows who it is in the simulation and every move it
+ * made, world by world, with the quotes behind them; a world shows how it
+ * unfolded period by period; an event shows the moves that led to it; a
+ * source shows who quoted it and what the report rests on it; a link shows
+ * the move it was drawn from. Together they make a thread a reader can follow
+ * from the prediction back to the words it came from.
  */
 import { type ReactNode } from 'react';
 import { ArrowLeft, LocateFixed, MessageSquare, Network, X } from 'lucide-react';
-import { directionWord, postView } from '@/lib/oi/forecast';
+import { directionWord } from '@/lib/oi/forecast';
 import { LINK_LABEL, TYPE_LABEL } from '@/lib/oi/objects';
-import { nodeName, postFor, relatedLinks, type Selection } from '@/lib/oi/research';
-import type { RunState } from '@/lib/oi/state';
-import type { Link, Post } from '@/lib/oi/types';
+import { moveFor, nodeName, relatedLinks, type Selection } from '@/lib/oi/research';
+import { worldName, type RunState } from '@/lib/oi/state';
+import type { Link, Move } from '@/lib/oi/types';
 import { LABEL, T, ago, gold, leanTo, pct, tint, toneColor } from './theme';
-import { Avatar, IconButton, Mentions, Overline, TypeIcon, ViewTag, accentFor } from './atoms';
-import { LineGlyph } from './lists';
+import { Avatar, IconButton, Mentions, Overline, PointTag, STANCE, StanceTag, TypeIcon, accentFor } from './atoms';
+import { EventRow, LineGlyph, MoveRow, periodReached } from './lists';
 import { PushTag, Quotes, SOURCE_KIND, SourceLink, Verbatim, sourceLabel } from './quotes';
 import { evidenceLedger } from '@/lib/oi/sources';
 
@@ -28,7 +30,7 @@ export interface ObjectViewProps {
   sel: Selection;
   onSelect: (key: string | null) => void;
   onLocate: (lat: number, lng: number, zoom?: number) => void;
-  onAsk: (agentId: string) => void;
+  onAsk: (actorId: string) => void;
   /** Open the selection in the graph view, where the workspace has one. */
   onGraph?: () => void;
   /** 'panel' fills a workspace column; 'card' sits inline in the docked panel. */
@@ -38,11 +40,12 @@ export interface ObjectViewProps {
 }
 
 const TONE_WORD = { support: 'Aligned', oppose: 'Opposed', neutral: 'Between' } as const;
+const STANCE_VERB: Record<Move['stance'], string> = { cooperate: 'cooperates with', pressure: 'presses', oppose: 'opposes', hold: 'holds toward' };
 
 /** A link to another object: its icon and its name. */
 function ObjectChip({ s, k, onSelect }: { s: RunState; k: string; onSelect: (k: string | null) => void }) {
   const source = k.startsWith('c:') ? s.context.find(c => `c:${c.id}` === k) : undefined;
-  const subtype = k.startsWith('a:') ? s.actors.find(a => `a:${a.id}` === k)?.kind : source?.kind ?? '';
+  const subtype = k.startsWith('a:') ? s.actors.find(a => `a:${a.id}` === k)?.kind : k.startsWith('e:') ? s.events.find(e => `e:${e.id}` === k)?.kind : source?.kind ?? '';
   return (
     <button onClick={() => onSelect(k)} title={nodeName(s, k)}
       className="inline-flex items-center gap-1.5 max-w-full h-6 px-2 rounded border border-[var(--border-secondary)] bg-white/[0.02] text-[11px] text-[var(--text-primary)] hover:border-[var(--border-active)] hover:text-[var(--gold-light)] transition-colors">
@@ -54,10 +57,12 @@ function ObjectChip({ s, k, onSelect }: { s: RunState; k: string; onSelect: (k: 
 }
 
 /** Whether the words a quote link carries were found in its source. */
-const exactOf = (s: RunState, l: Link) =>
-  s.posts.find(p => `g:${p.agent}` === l.from && p.round === l.round)?.cites?.find(c => `c:${c.source}` === l.to)?.exact ?? false;
+const exactOf = (s: RunState, l: Link) => moveFor(s, l)?.cites?.find(c => `c:${c.source}` === l.to)?.exact ?? false;
 
-/** Who quoted a source, and in which words: each row opens the quote, with its turn. */
+/** "World A · P2": where in the simulation a move or a quote link was drawn. */
+const whereOf = (l: Link) => `${worldName(l.id.split(':')[1] ?? '')} · P${l.round}`;
+
+/** Who quoted a source, and in which words: each row opens the quote, with where in the simulation. */
 function QuoteRows({ s, links, onSelect }: { s: RunState; links: Link[]; onSelect: (k: string | null) => void }) {
   return (
     <div className="flex flex-col gap-1">
@@ -67,7 +72,7 @@ function QuoteRows({ s, links, onSelect }: { s: RunState; links: Link[]; onSelec
           <span className="flex items-center gap-2">
             <Avatar name={nodeName(s, l.from)} size={18} />
             <span className="text-[11px] font-medium truncate text-[var(--text-primary)]">{nodeName(s, l.from)}</span>
-            <span className="text-[9px] font-mono tracking-[0.1em] uppercase text-[var(--text-muted)]">round {l.round}</span>
+            <span className="text-[9px] font-mono tracking-[0.1em] uppercase whitespace-nowrap text-[var(--text-muted)]">{whereOf(l)}</span>
             <span className="ml-auto"><Verbatim exact={exactOf(s, l)} /></span>
           </span>
           <span className="mt-1 block pl-[26px] text-[11px] leading-snug text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">“{l.label}”</span>
@@ -127,20 +132,23 @@ function StrengthBar({ value, color }: { value: number; color: string }) {
   );
 }
 
-function PostCard({ s, post, note, onSelect }: { s: RunState; post: Post; note?: string; onSelect: (k: string | null) => void }) {
-  const a = s.agents.find(x => x.id === post.agent);
+/** One of an actor's own moves, without its name: the period, the act, what it said, why, and what it quoted. */
+function OwnMove({ s, move, onSelect }: { s: RunState; move: Move; onSelect: (k: string | null) => void }) {
+  const targets = move.targets.map(t => s.actors.find(a => a.id === t)?.name).filter(Boolean);
+  const period = s.periods.find(p => p.index === move.period);
   return (
-    <div className="rounded-md border border-[var(--border-secondary)] bg-black/25 px-3 py-2.5">
-      <div className="flex items-center gap-2">
-        <Avatar name={a?.name ?? '?'} size={22} />
-        <button onClick={() => onSelect(`g:${post.agent}`)} className="text-[11px] font-semibold truncate text-[var(--text-heading)] hover:text-[var(--gold-light)]">{a?.name ?? post.agent}</button>
-        <span className="text-[9px] font-mono tracking-[0.1em] uppercase text-[var(--text-muted)]">{note ?? `round ${post.round}`}</span>
-        <span className="ml-auto"><ViewTag post={post} frame={s.frame} /></span>
+    <div className="flex gap-2.5">
+      <span className="mt-[3px] w-6 flex-shrink-0 text-[9px] font-mono tabular-nums text-[var(--text-muted)]" title={period?.label}>P{move.period}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <StanceTag stance={move.stance} />
+          {targets.length > 0 && <span className="text-[9.5px] truncate text-[var(--text-muted)]">→ {targets.join(', ')}</span>}
+        </div>
+        <p className="mt-0.5 text-[11.5px] leading-[1.5] text-[var(--text-primary)]"><Mentions text={move.action} s={s} onSelect={onSelect} /></p>
+        {move.statement && <p className="mt-0.5 text-[11px] leading-snug italic text-[var(--text-secondary)]">“{move.statement}”</p>}
+        {move.why && <p className="mt-0.5 text-[10.5px] leading-snug text-[var(--text-muted)]">Why: {move.why}</p>}
+        <Quotes s={s} cites={move.cites} onSelect={onSelect} />
       </div>
-      <p className="mt-1.5 text-[11.5px] leading-[1.55] text-[var(--text-secondary)]"><Mentions text={post.text} s={s} onSelect={onSelect} /></p>
-      <Quotes s={s} cites={post.cites} onSelect={onSelect} />
-      {post.reasoning && <p className="mt-1 text-[10.5px] italic leading-snug text-[var(--text-muted)]">{post.reasoning}</p>}
-      {post.changed && post.changed.toLowerCase() !== 'nothing' && <p className="mt-1 text-[10.5px] text-[var(--text-muted)]">Moved by {post.changed.replace(/^\w/, c => c.toLowerCase())}</p>}
     </div>
   );
 }
@@ -156,7 +164,7 @@ function LinkRows({ s, links, from, onSelect }: { s: RunState; links: Link[]; fr
             className="group flex items-center gap-2.5 -mx-1.5 px-1.5 py-1 rounded text-left transition-colors hover:bg-[var(--hover-accent)]">
             <LineGlyph link={l} />
             <span className="flex-1 min-w-0 text-[11px] truncate text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
-              {nodeName(s, other)}{l.label && l.kind !== 'focus' && <span className="text-[var(--text-muted)]"> · {l.label}</span>}
+              {nodeName(s, other)}{l.label && <span className="text-[var(--text-muted)]"> · {l.label}</span>}
             </span>
             <span className="text-[8.5px] font-mono tracking-[0.12em] uppercase flex-shrink-0" style={{ color: toneColor(l.tone) }}>{TONE_WORD[l.tone]}</span>
           </button>
@@ -166,11 +174,21 @@ function LinkRows({ s, links, from, onSelect }: { s: RunState; links: Link[]; fr
   );
 }
 
+/** Where a world stood after a period, with the line that says why. */
+function Standing({ s, point, onSelect }: { s: RunState; point: RunState['points'][number]; onSelect: (k: string | null) => void }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <PointTag point={point} frame={s.frame} />
+      <span className="text-[11px] leading-snug text-[var(--text-secondary)]"><Mentions text={point.note} s={s} onSelect={onSelect} /></span>
+    </div>
+  );
+}
+
 export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant = 'card', onBack }: ObjectViewProps) {
   const place = (k: string) => {
     const [prefix, ...rest] = k.split(':');
     const id = rest.join(':');
-    const n = prefix === 'a' ? s.actors.find(a => a.id === id) : prefix === 'g' ? s.agents.find(a => a.id === id) : prefix === 'c' ? s.context.find(c => c.id === id) : null;
+    const n = prefix === 'a' ? s.actors.find(a => a.id === id) : prefix === 'e' ? s.events.find(e => e.id === id) : prefix === 'c' ? s.context.find(c => c.id === id) : null;
     return n && n.lat !== null && n.lng !== null ? { lat: n.lat, lng: n.lng } : null;
   };
 
@@ -188,7 +206,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
   switch (sel.type) {
     case 'link': {
       const l = sel.link;
-      accent = toneColor(l.tone);
+      accent = l.kind === 'cite' ? T.body : toneColor(l.tone);
       iconLink = l.kind;
       type = 'Link';
       subtype = LINK_LABEL[l.kind];
@@ -196,23 +214,21 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       const a = place(l.from), b = place(l.to);
       if (a && b) locate = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2, zoom: 2.2 };
       const fromReport = l.from === 'r:report';
+      const mv = moveFor(s, l);
       const verb = l.kind === 'cite' ? (fromReport ? 'rests on' : 'quotes')
-        : l.kind === 'relation' ? '⇄' : l.kind === 'evidence' ? '→' : l.kind === 'reply' ? (l.tone === 'support' ? 'agrees with' : l.tone === 'oppose' ? 'disputes' : 'questions') : l.round ? 'weighing' : 'watches';
+        : l.kind === 'relation' ? '⇄' : l.kind === 'evidence' ? '→' : mv ? STANCE_VERB[mv.stance] : 'moves on';
       const quotedSource = l.kind === 'cite' ? s.context.find(c => `c:${c.id}` === l.to) : undefined;
       title = <>{nodeName(s, l.from)} <span className="font-normal text-[var(--text-muted)]">{verb}</span> {l.kind === 'cite' ? sourceLabel(quotedSource, l.to.slice(2)) : nodeName(s, l.to)}</>;
       const evidenceEffect = s.frame?.kind === 'number' ? (l.tone === 'support' ? 'Points higher' : l.tone === 'oppose' ? 'Points lower' : 'Bears on')
         : l.tone === 'support' ? 'Points toward YES' : l.tone === 'oppose' ? 'Points toward NO' : 'Bears on';
+      const period = l.round ? s.periods.find(p => p.index === l.round) : undefined;
       props = [
-        ['Tone', <span key="t" className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: accent }} />{l.kind === 'evidence' ? evidenceEffect : TONE_WORD[l.tone]}</span>],
-        ['Strength', <StrengthBar key="s" value={l.strength} color={accent} />],
-        ['Round', l.kind === 'cite' && fromReport ? 'The report' : l.round ? `Round ${l.round}` : 'World model'],
+        ['Tone', l.kind === 'cite' ? null : <span key="t" className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: accent }} />{l.kind === 'evidence' ? evidenceEffect : l.kind === 'move' && mv ? STANCE[mv.stance].word : TONE_WORD[l.tone]}</span>],
+        ['Strength', l.kind === 'cite' ? null : <StrengthBar key="s" value={l.strength} color={accent} />],
+        ['When', l.kind === 'cite' && fromReport ? 'The report' : l.round ? <span key="w">{whereOf(l)}{period && <span className="text-[var(--text-muted)]"> · {period.label}</span>}</span> : 'World model'],
         ['From', <ObjectChip key="f" s={s} k={l.from} onSelect={onSelect} />],
         ['To', <ObjectChip key="o" s={s} k={l.to} onSelect={onSelect} />],
       ];
-      const said = postFor(s, l);
-      const answered = l.kind === 'reply'
-        ? s.posts.filter(p => `g:${p.agent}` === l.to && p.round === l.round - 1)[0] ?? s.posts.filter(p => `g:${p.agent}` === l.to && p.round <= l.round).at(-1)
-        : undefined;
       const item = l.kind === 'evidence' ? s.context.find(c => `c:${c.id}` === l.from) : undefined;
       body = (
         <>
@@ -230,16 +246,13 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
               </div>
             </Group>
           )}
-          {l.label && l.kind !== 'focus' && !(l.kind === 'cite' && !fromReport) && (
-            <blockquote className="pl-2.5 text-[12px] leading-relaxed text-[var(--text-primary)] border-l-2" style={{ borderColor: accent }}>
-              {l.kind === 'reply' ? `“${l.label}”` : l.label}
-            </blockquote>
+          {l.label && !(l.kind === 'cite' && !fromReport) && !(l.kind === 'move' && mv) && (
+            <blockquote className="pl-2.5 text-[12px] leading-relaxed text-[var(--text-primary)] border-l-2" style={{ borderColor: accent }}>{l.label}</blockquote>
           )}
           {item && <p className="text-[9.5px] font-mono tracking-[0.08em] text-[var(--text-muted)]">{[item.source, item.place, ago(item.published)].filter(Boolean).join(' · ')}</p>}
-          {(answered || said) && (
-            <Group label={l.kind === 'reply' ? 'The exchange' : 'The turn it came from'}>
-              {answered && <PostCard s={s} onSelect={onSelect} post={answered} note={`said · round ${answered.round}`} />}
-              {said && <PostCard s={s} onSelect={onSelect} post={said} note={l.kind === 'reply' ? `replied · round ${said.round}` : undefined} />}
+          {mv && (
+            <Group label={l.kind === 'cite' ? 'The move it shaped' : 'The move it was drawn from'}>
+              <div className="rounded-md border border-[var(--border-secondary)] bg-black/25 px-2.5 py-2"><MoveRow s={s} move={mv} on={false} onSelect={onSelect} showWorld /></div>
             </Group>
           )}
         </>
@@ -249,7 +262,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
     case 'actor': {
       const a = sel.actor;
       type = TYPE_LABEL.actor;
-      subtype = a.kind;
+      subtype = a.persona ? `${a.kind} · plays` : a.kind;
       iconSub = a.kind;
       title = a.name;
       inGraph = true;
@@ -257,64 +270,45 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       const touching = s.links.filter(l => l.from === sel.key || l.to === sel.key);
       const rel = touching.filter(l => l.kind === 'relation');
       const ev = touching.filter(l => l.kind === 'evidence');
-      const watchers = [...new Set(touching.filter(l => l.kind === 'focus').map(l => l.from))];
+      const moves = s.moves.filter(m => m.actor === a.id);
+      const aimedBy = [...new Set(s.moves.filter(m => m.actor !== a.id && m.targets.includes(a.id)).map(m => `a:${m.actor}`))];
+      // What moved it: every source it quoted, and which way.
+      const moved = evidenceLedger(moves);
+      const deciding = s.worlds.filter(w => `${w}:${a.id}` in s.thinking);
+      const predicted = s.report?.actorMoves.find(m => m.actor === a.id)?.prediction;
       const leanWords = s.frame?.kind === 'number' ? (a.lean > 0.15 ? 'pushes higher' : a.lean < -0.15 ? 'pushes lower' : 'balanced') : a.lean > 0.15 ? 'toward YES' : a.lean < -0.15 ? 'toward NO' : 'balanced';
       props = [
         ['Role', a.role],
+        ['Wants', a.persona?.goal],
+        ['Can', a.persona?.levers.length ? a.persona.levers.join(' · ') : null],
+        ['Will not', a.persona?.redLines],
+        ['Decides', a.persona?.style],
         ['Location', a.place],
         ['Lean', s.frame?.kind === 'choice' ? null : <LeanBar key="l" lean={a.lean} words={leanWords} />],
-        ['Links', <span key="n" className="font-mono tabular-nums">{touching.length}</span>],
+        ['Now', deciding.length ? <span key="d" className="text-[var(--cyan-primary)]">Deciding in {deciding.map(worldName).join(', ')}…</span> : null],
       ];
       body = (
         <>
-          {rel.length > 0 && <Group label="Relations" count={rel.length}><LinkRows s={s} links={rel} from={sel.key} onSelect={onSelect} /></Group>}
-          {ev.length > 0 && <Group label="Evidence" count={ev.length}><LinkRows s={s} links={ev} from={sel.key} onSelect={onSelect} /></Group>}
-          {watchers.length > 0 && (
-            <Group label="Weighed by" count={watchers.length}>
-              <div className="flex flex-wrap gap-1.5">{watchers.map(k => <ObjectChip key={k} s={s} k={k} onSelect={onSelect} />)}</div>
+          {predicted && (
+            <Group label="Predicted to">
+              <blockquote className="pl-2.5 text-[12px] leading-relaxed text-[var(--text-heading)] border-l-2" style={{ borderColor: T.goldLight }}><Mentions text={predicted} s={s} onSelect={onSelect} /></blockquote>
             </Group>
           )}
-        </>
-      );
-      break;
-    }
-    case 'agent': {
-      const a = sel.agent;
-      type = TYPE_LABEL.panelist;
-      subtype = a.role;
-      title = a.name;
-      inGraph = true;
-      if (a.lat !== null && a.lng !== null) locate = { lat: a.lat, lng: a.lng, zoom: 3.5 };
-      const posts = s.posts.filter(p => p.agent === a.id);
-      const last = posts[posts.length - 1];
-      const first = posts[0];
-      const replies = s.links.filter(l => l.kind === 'reply' && (l.from === sel.key || l.to === sel.key));
-      // What moved them: every source they quoted, and which way.
-      const moved = evidenceLedger(posts);
-      const weighing = s.links.filter(l => l.kind === 'focus' && l.from === sel.key);
-      props = [
-        ['Role', a.role],
-        ['Based in', a.place],
-        ['Lens', a.lens],
-        ['Watches for', a.bias],
-        ['Prior', s.frame?.kind === 'binary' ? <span key="p" className="font-mono">{pct(a.prior)}</span> : null],
-        ['Latest', last ? <ViewTag key="v" post={last} frame={s.frame} /> : <span key="v" className="text-[var(--text-muted)]">{a.id in s.thinking ? 'Thinking…' : 'Not spoken yet'}</span>],
-        ['Moved', first && last && first !== last ? <span key="m" className="font-mono text-[10.5px] text-[var(--text-secondary)]">{postView(first, s.frame)} → {postView(last, s.frame)}</span> : null],
-        ['Confidence', last ? <span key="c" className="font-mono">{pct(last.confidence)}</span> : null],
-      ];
-      body = (
-        <>
-          {posts.length > 0 && (
-            <Group label="Activity" count={posts.length}>
-              <div className="flex flex-col gap-2">{posts.slice().reverse().map(p => <PostCard key={p.id} s={s} onSelect={onSelect} post={p} />)}</div>
-            </Group>
-          )}
+          {s.worlds.map(w => {
+            const own = moves.filter(m => m.world === w);
+            if (!own.length) return null;
+            return (
+              <Group key={w} label={`Its moves · ${worldName(w)}`} count={own.length}>
+                <div className="flex flex-col gap-2.5">{own.map(m => <OwnMove key={m.id} s={s} move={m} onSelect={onSelect} />)}</div>
+              </Group>
+            );
+          })}
           {moved.length > 0 && (
-            <Group label="What moved them" count={moved.length}>
+            <Group label="What moved it" count={moved.length}>
               <div className="flex flex-col">
                 {moved.map(r => {
                   const c = s.context.find(x => x.id === r.source);
-                  const last = posts.flatMap(p => p.cites ?? []).filter(x => x.source === r.source).at(-1);
+                  const last = moves.flatMap(m => m.cites ?? []).filter(x => x.source === r.source).at(-1);
                   return (
                     <div key={r.source} className="flex items-center gap-2 -mx-1.5 px-1.5 py-1 rounded hover:bg-[var(--hover-accent)]">
                       <button onClick={() => onSelect(`c:${r.source}`)} className="flex-1 min-w-0 flex items-center gap-2 text-left">
@@ -330,11 +324,82 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
               </div>
             </Group>
           )}
-          {replies.length > 0 && <Group label="Exchanges" count={replies.length}><LinkRows s={s} links={replies} from={sel.key} onSelect={onSelect} /></Group>}
-          {weighing.length > 0 && <Group label="Weighing" count={weighing.length}><LinkRows s={s} links={weighing} from={sel.key} onSelect={onSelect} /></Group>}
-          <button onClick={() => onAsk(a.id)} className="btn-tactical btn-tactical--cyan self-start flex items-center gap-2" style={{ padding: '6px 12px', fontSize: 10 }}>
-            <MessageSquare className="w-3 h-3" /> Ask {/^Agent \d+$/.test(a.name) ? a.name : a.name.split(' ')[0]}
-          </button>
+          {aimedBy.length > 0 && (
+            <Group label="Moved against it or with it" count={aimedBy.length}>
+              <div className="flex flex-wrap gap-1.5">{aimedBy.map(k => <ObjectChip key={k} s={s} k={k} onSelect={onSelect} />)}</div>
+            </Group>
+          )}
+          {rel.length > 0 && <Group label="Relations" count={rel.length}><LinkRows s={s} links={rel} from={sel.key} onSelect={onSelect} /></Group>}
+          {ev.length > 0 && <Group label="Evidence" count={ev.length}><LinkRows s={s} links={ev} from={sel.key} onSelect={onSelect} /></Group>}
+          {a.persona && (
+            <button onClick={() => onAsk(a.id)} className="btn-tactical btn-tactical--cyan self-start flex items-center gap-2" style={{ padding: '6px 12px', fontSize: 10 }}>
+              <MessageSquare className="w-3 h-3" /> Ask {a.name.split(' ').slice(0, 2).join(' ')}
+            </button>
+          )}
+        </>
+      );
+      break;
+    }
+    case 'event': {
+      const e = sel.event;
+      type = TYPE_LABEL.event;
+      subtype = e.kind === 'shock' ? 'surprise' : e.kind === 'injected' ? 'injected' : '';
+      iconSub = e.kind;
+      title = e.title;
+      if (e.lat !== null && e.lng !== null) locate = { lat: e.lat, lng: e.lng, zoom: 4 };
+      const period = s.periods.find(p => p.index === e.period);
+      const point = s.points.find(p => p.world === e.world && p.period === e.period);
+      // The moves behind it: what the actors it involves did in that world and period.
+      const behind = s.moves.filter(m => m.world === e.world && m.period === e.period && (e.actors.length === 0 || e.actors.includes(m.actor)));
+      props = [
+        ['World', <ObjectChip key="w" s={s} k={`w:${e.world}`} onSelect={onSelect} />],
+        ['Date', <span key="d">{e.date}{period && <span className="text-[var(--text-muted)]"> · P{period.index}, {period.label}</span>}</span>],
+        ['Pushes', <PushTag key="p" c={e} frame={s.frame} />],
+        ['Where', e.place],
+        ['Involves', e.actors.length ? <div key="a" className="flex flex-wrap gap-1.5">{e.actors.map(id => <ObjectChip key={id} s={s} k={`a:${id}`} onSelect={onSelect} />)}</div> : null],
+      ];
+      body = (
+        <>
+          {e.detail && <p className="text-[11.5px] leading-relaxed text-[var(--text-secondary)]"><Mentions text={e.detail} s={s} onSelect={onSelect} /></p>}
+          {point && <Group label="Where it left the question"><Standing s={s} point={point} onSelect={onSelect} /></Group>}
+          {e.kind !== 'injected' && behind.length > 0 && (
+            <Group label="The moves behind it" count={behind.length}>
+              <div className="flex flex-col gap-2.5">{behind.map(m => <MoveRow key={m.id} s={s} move={m} on={false} onSelect={onSelect} />)}</div>
+            </Group>
+          )}
+        </>
+      );
+      break;
+    }
+    case 'world': {
+      const w = sel.world;
+      type = TYPE_LABEL.world;
+      subtype = 'simulated';
+      title = worldName(w);
+      const points = s.points.filter(p => p.world === w);
+      const last = points.at(-1);
+      const ended = s.report?.worlds.find(x => x.world === w);
+      const reached = periodReached(s);
+      props = [
+        ['Stands', last ? <PointTag key="p" point={last} frame={s.frame} /> : <span key="p" className="text-[var(--text-muted)]">Not started</span>],
+        ['Outcome', ended?.outcome],
+        ['Events', <span key="e" className="font-mono tabular-nums">{s.events.filter(e => e.world === w).length}</span>],
+        ['Moves', <span key="m" className="font-mono tabular-nums">{s.moves.filter(m => m.world === w).length}</span>],
+      ];
+      body = (
+        <>
+          {ended?.summary && <p className="text-[11.5px] leading-relaxed text-[var(--text-secondary)]"><Mentions text={ended.summary} s={s} onSelect={onSelect} /></p>}
+          {s.periods.filter(p => p.index <= reached).map(p => {
+            const point = points.find(x => x.period === p.index);
+            const events = s.events.filter(e => e.world === w && e.period === p.index);
+            if (!point && !events.length) return null;
+            return (
+              <Group key={p.index} label={`P${p.index} · ${p.label}`}>
+                {events.length > 0 && <div className="flex flex-col gap-1">{events.map(e => <EventRow key={e.id} s={s} event={e} on={false} onSelect={onSelect} />)}</div>}
+                {point && <Standing s={s} point={point} onSelect={onSelect} />}
+              </Group>
+            );
+          })}
         </>
       );
       break;
@@ -347,15 +412,16 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       title = c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title;
       if (c.lat !== null && c.lng !== null) locate = { lat: c.lat, lng: c.lng, zoom: 4 };
       const bears = s.links.filter(l => l.kind === 'evidence' && l.from === sel.key);
-      const quotedBy = s.links.filter(l => l.kind === 'cite' && l.to === sel.key && l.from.startsWith('g:')).sort((a, b) => a.round - b.round);
+      const quotedBy = s.links.filter(l => l.kind === 'cite' && l.to === sel.key && l.from.startsWith('a:')).sort((a, b) => a.round - b.round);
       const inReport = s.links.filter(l => l.kind === 'cite' && l.to === sel.key && l.from === 'r:report');
+      const quoters = new Set(quotedBy.map(l => l.from)).size;
       inGraph = bears.length + quotedBy.length + inReport.length > 0;
       props = [
         ['Id', <span key="i" className="font-mono">[{c.id}]</span>],
         [c.kind === 'data' ? 'From' : 'Source', <span key="s" className="inline-flex items-center gap-1.5">{sourceLabel(c, c.id)}<SourceLink url={c.url} /></span>],
         ['Location', c.place],
         ['Published', c.published ? `${new Date(c.published).toLocaleString()} · ${ago(c.published)}` : ''],
-        ['Quoted', quotedBy.length ? <span key="q" className="font-mono tabular-nums">{quotedBy.length}× by {new Set(quotedBy.map(l => l.from)).size} panelist{new Set(quotedBy.map(l => l.from)).size === 1 ? '' : 's'}</span> : null],
+        ['Quoted', quotedBy.length ? <span key="q" className="font-mono tabular-nums">{quotedBy.length}× by {quoters} actor{quoters === 1 ? '' : 's'}</span> : null],
       ];
       body = (
         <>
@@ -384,7 +450,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
           )}
           {quotedBy.length > 0 && <Group label="Quoted by" count={quotedBy.length}><QuoteRows s={s} links={quotedBy} onSelect={onSelect} /></Group>}
           {bears.length > 0 && <Group label="Cited against" count={bears.length}><LinkRows s={s} links={bears} from={sel.key} onSelect={onSelect} /></Group>}
-          {!inGraph && <p className="text-[11px] text-[var(--text-muted)]">Read by the panel; nobody quoted it.</p>}
+          {!inGraph && <p className="text-[11px] text-[var(--text-muted)]">Read by the actors; nobody quoted it.</p>}
         </>
       );
       break;
@@ -502,4 +568,3 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
     </section>
   );
 }
-

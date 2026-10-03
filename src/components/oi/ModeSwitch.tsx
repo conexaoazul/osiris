@@ -3,7 +3,7 @@
  * OSIRIS OI: Forecast or Assist.
  *
  * The two ways to use OI, side by side, each in its own colour so it is never
- * in doubt which one is showing: Forecast is gold (the swarm of forecasters,
+ * in doubt which one is showing: Forecast is gold (the prediction engine,
  * its report and its arcs); Assist is cyan (the conversation, and everything
  * it marks on the map). Each card says in a line what its mode does, and
  * shows when it is at work: a forecast running, or OI in the middle of a reply.
@@ -15,7 +15,7 @@ import { LABEL, T, cyan, gold } from './theme';
 export type OiMode = 'forecast' | 'assist';
 
 const MODES: { value: OiMode; label: string; blurb: string; accent: string; tint: (a: number) => string }[] = [
-  { value: 'forecast', label: 'Forecast', blurb: 'A swarm of AI forecasters debates your question', accent: T.gold, tint: gold },
+  { value: 'forecast', label: 'Forecast', blurb: 'The actors play your question out in parallel worlds', accent: T.gold, tint: gold },
   { value: 'assist', label: 'Assist', blurb: 'Talk to OI and it works the map for you', accent: T.cyan, tint: cyan },
 ];
 

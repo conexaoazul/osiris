@@ -35,7 +35,7 @@ const MODES: { value: Mode; label: string; title: string }[] = [
   { value: 'auto', label: 'Auto', title: 'OI decides what to do' },
   { value: 'navigate', label: 'Navigate', title: 'Move the map and switch layers' },
   { value: 'research', label: 'Research', title: 'Gather live data and put it on screen' },
-  { value: 'forecast', label: 'Forecast', title: 'Run the forecasting swarm on your question' },
+  { value: 'forecast', label: 'Forecast', title: 'Run the prediction engine on your question' },
 ];
 
 /** What OI can do, each with something to try: a tile sends its example. */
@@ -48,7 +48,7 @@ const CAPABILITIES: { icon: typeof Navigation; title: string; mode: Mode; text: 
   { icon: LayoutDashboard, title: 'Drive the workspace', mode: 'auto', text: 'Open the workspace on the graph' },
 ];
 
-/** Assist hands a question to the forecasting swarm. */
+/** Assist hands a question to the prediction engine. */
 const HANDOFF = 'Will OPEC+ announce a production cut before December 2026?';
 
 /** What an action is doing, in words, before its result says what it did. */
@@ -300,7 +300,7 @@ export function AssistView(p: AssistViewProps) {
             <textarea ref={input} value={dictation.listening ? dictation.heard : text} rows={1}
               onChange={e => setText(e.target.value.slice(0, 2000))}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(text); } }}
-              placeholder={dictation.listening ? 'Listening…' : mode === 'forecast' ? 'What should the swarm forecast?' : 'Ask OI, or tell it where to go'}
+              placeholder={dictation.listening ? 'Listening…' : mode === 'forecast' ? 'What should OI predict?' : 'Ask OI, or tell it where to go'}
               aria-label="Message to OI" readOnly={dictation.listening}
               className="flex-1 resize-none bg-transparent outline-none text-[12px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] py-1 max-h-[110px]" />
             {dictation.supported && (

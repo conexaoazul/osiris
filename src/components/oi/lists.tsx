@@ -1,24 +1,23 @@
 'use client';
 /**
- * OSIRIS OI: the run as lists: the debate as it happened, the panel, the
- * world model and the live intelligence it read, and a way to question the
- * panel afterwards.
+ * OSIRIS OI: the run as lists: the simulation as it happened, period by
+ * period and world by world, the actors who play it, the world model and the
+ * sources it read, and a way to question the actors afterwards.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, Send, Trash2, Zap } from 'lucide-react';
+import { ChevronDown, Loader2, Send, Trash2, Zap } from 'lucide-react';
 import type { Engine, OiClient } from '@/lib/oi/client';
-import { latestPosts, type RunState } from '@/lib/oi/state';
-import { formatAmount, leader, outcomeColor, positionIn } from '@/lib/oi/forecast';
+import { castOf, worldName, type RunState } from '@/lib/oi/state';
+import { formatAmount, leader } from '@/lib/oi/forecast';
 import { nodeName } from '@/lib/oi/research';
-import { rangeOf } from '@/lib/oi/timeline';
-import type { ContextItem, Link, Post, RoundStat } from '@/lib/oi/types';
-import { FIELD, LABEL, T, ago, cyan, fit, gold, pct, smooth, toneColor } from './theme';
-import { Avatar, Empty, Mentions, SectionTitle, ViewTag } from './atoms';
+import type { Actor, ContextItem, Link, Move, Period, RoundStat, SimEvent } from '@/lib/oi/types';
+import { FIELD, LABEL, T, ago, cyan, gold, pct, toneColor } from './theme';
+import { Avatar, Empty, Mentions, PointTag, STANCE, SectionTitle, Segmented, StanceTag, TypeIcon } from './atoms';
 import { ReportBody } from './report';
-import { Quotes, SOURCE_KIND, SourceLink, sourceLabel } from './quotes';
+import { PushTag, Quotes, SOURCE_KIND, SourceLink, sourceLabel } from './quotes';
 
-export type Tab = 'report' | 'debate' | 'panel' | 'world' | 'ask';
+export type Tab = 'report' | 'sim' | 'actors' | 'world' | 'ask';
 
 export function RunTabs(p: {
   s: RunState; tab: Tab; setTab: (t: Tab) => void; oi: OiClient; engine: Engine; keyValue: string; ready: boolean;
@@ -26,21 +25,21 @@ export function RunTabs(p: {
 }) {
   const { s, tab, setTab } = p;
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    ...(!p.theater && s.report ? [{ id: 'report' as Tab, label: 'Report' }] : []),
-    { id: 'debate', label: 'Debate', count: s.posts.length || undefined },
-    { id: 'panel', label: 'Panel', count: s.agents.length || undefined },
+    ...(!p.theater && s.report ? [{ id: 'report' as Tab, label: 'Prediction' }] : []),
+    { id: 'sim', label: 'Simulation', count: s.events.length || undefined },
+    { id: 'actors', label: 'Actors', count: castOf(s).length || undefined },
     { id: 'world', label: 'World', count: s.actors.length || undefined },
     { id: 'ask', label: 'Q&A' },
   ];
-  const current = tabs.some(t => t.id === tab) ? tab : 'debate';
+  const current = tabs.some(t => t.id === tab) ? tab : 'sim';
   return (
     <div className={`flex flex-col ${p.theater ? 'h-full min-h-0' : ''}`}>
-      <div role="tablist" className="flex items-stretch px-2 border-b border-[var(--border-secondary)] flex-shrink-0">
+      <div role="tablist" className="flex items-stretch px-1.5 border-b border-[var(--border-secondary)] flex-shrink-0 overflow-x-auto [scrollbar-width:none]">
         {tabs.map(t => {
           const on = current === t.id;
           return (
             <button key={t.id} role="tab" aria-selected={on} onClick={() => setTab(t.id)}
-              className={`relative px-2.5 h-10 text-[9.5px] font-mono tracking-[0.18em] uppercase transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${on ? 'text-[var(--gold-light)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
+              className={`relative px-2 h-10 text-[9.5px] font-mono tracking-[0.16em] uppercase whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${on ? 'text-[var(--gold-light)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
               {t.label}{t.count ? <span className={`ml-1.5 tabular-nums ${on ? 'text-[var(--cyan-primary)]' : ''}`}>{t.count}</span> : null}
               {on && <motion.span layoutId={p.theater ? 'oi-tab-theater' : 'oi-tab'} className="absolute left-2 right-2 -bottom-px h-[2px] rounded-full" style={{ background: T.gold, boxShadow: `0 0 10px ${gold(0.7)}` }} transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
             </button>
@@ -49,8 +48,8 @@ export function RunTabs(p: {
       </div>
       <div className={`px-4 py-4 ${p.theater ? 'flex-1 min-h-0 overflow-y-auto styled-scrollbar' : ''}`}>
         {current === 'report' && s.report && <ReportBody s={s} runId={p.oi.runId} selected={p.selected} onSelect={p.onSelect} />}
-        {current === 'debate' && <DebateList s={s} selected={p.selected} onSelect={p.onSelect} />}
-        {current === 'panel' && <PanelList s={s} selected={p.selected} onSelect={p.onSelect} />}
+        {current === 'sim' && <SimFeed s={s} selected={p.selected} onSelect={p.onSelect} />}
+        {current === 'actors' && <ActorsList s={s} selected={p.selected} onSelect={p.onSelect} />}
         {current === 'world' && <WorldList s={s} selected={p.selected} onSelect={p.onSelect} />}
         {current === 'ask' && <AskBox s={s} oi={p.oi} engine={p.engine} keyValue={p.keyValue} ready={p.ready} target={p.askTarget} setTarget={p.setAskTarget} onSelect={p.onSelect} />}
       </div>
@@ -58,137 +57,217 @@ export function RunTabs(p: {
   );
 }
 
-export function DebateList({ s, selected, onSelect }: { s: RunState; selected: string | null; onSelect: (k: string | null) => void }) {
-  const [limit, setLimit] = useState(30);
-  const names = useMemo(() => new Map(s.agents.map(a => [a.id, a])), [s.agents]);
-  type Item = { kind: 'post'; post: Post } | { kind: 'inject'; text: string; round: number } | { kind: 'round'; stat: RoundStat };
-  const items: Item[] = [];
-  let pi = 0;
-  for (let r = 1; r <= Math.max(s.roundsPlanned, 1); r++) {
-    for (const inj of s.injects.filter(x => x.round === r)) items.push({ kind: 'inject', text: inj.text, round: r });
-    while (pi < s.posts.length && s.posts[pi].round === r) items.push({ kind: 'post', post: s.posts[pi++] });
-    const stat = s.rounds.find(x => x.round === r);
-    if (stat) items.push({ kind: 'round', stat });
-  }
-  while (pi < s.posts.length) items.push({ kind: 'post', post: s.posts[pi++] });
-  const shown = items.slice().reverse().slice(0, limit);
+/** The latest period the simulation has reached: the highest anyone has moved, decided or stood in. */
+export function periodReached(s: RunState): number {
+  return Math.max(0, ...s.moves.map(m => m.period), ...s.events.map(e => e.period), ...s.points.map(p => p.period), ...Object.values(s.thinking));
+}
 
-  if (!s.agents.length) {
-    return <Empty>{s.status === 'running' ? 'The panel is being assembled. On the globe, the actors and their relations are drawing in.' : 'No debate in this run.'}</Empty>;
+/** The pooled figure after a period, as the period's header says it. */
+export function pooledLabel(s: RunState, stat: RoundStat): string {
+  if (s.frame?.kind === 'number' && stat.value) return `median ${formatAmount(stat.value.median)}`;
+  if (s.frame?.kind === 'choice' && stat.shares) return `${s.frame.outcomes[leader(stat.shares)]} ${pct(Math.max(...stat.shares))}`;
+  return pct(stat.consensus);
+}
+
+/**
+ * The simulation as it happened: newest period first, and within it each
+ * world's events (what happened), where the question stood after them, and
+ * the moves the actors made. Earlier periods fold their moves away.
+ */
+export function SimFeed({ s, selected, onSelect }: { s: RunState; selected: string | null; onSelect: (k: string | null) => void }) {
+  const [world, setWorld] = useState('all');
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const cast = castOf(s);
+  if (!cast.length) {
+    return <Empty>{s.status === 'running' ? 'The actors who decide this are being cast. On the globe, the world model is drawing in.' : 'No simulation in this run.'}</Empty>;
   }
-  const roundLabel = (stat: RoundStat) => s.frame?.kind === 'number' && stat.value ? `MEDIAN ${formatAmount(stat.value.median)}`
-    : s.frame?.kind === 'choice' && stat.shares ? `${s.frame.outcomes[leader(stat.shares)]} ${pct(Math.max(...stat.shares))}` : pct(stat.consensus);
-  const pick = (key: string) => onSelect(key === selected ? null : key);
+  const reached = periodReached(s);
+  if (!reached) return <Empty>The actors are cast. The first period of simulated time is about to start.</Empty>;
+  const worlds = world !== 'all' && s.worlds.includes(world) ? [world] : s.worlds;
+  const periods = s.periods.filter(p => p.index <= reached).reverse();
+  const toggle = (k: string) => setOpen(o => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   return (
-    <div className="flex flex-col gap-3.5">
-      {shown.map((it, i) => {
-        if (it.kind === 'round') {
-          return (
-            <div key={`r${it.stat.round}`} className="flex items-center gap-2.5">
-              <span className="flex-1 h-px bg-[var(--border-secondary)]" />
-              <span className="text-[9px] font-mono tracking-[0.16em] uppercase whitespace-nowrap text-[var(--text-muted)]">Round {it.stat.round} · <span className="text-[var(--gold-light)]">{roundLabel(it.stat)}</span></span>
-              <span className="flex-1 h-px bg-[var(--border-secondary)]" />
-            </div>
-          );
-        }
-        if (it.kind === 'inject') {
-          return (
-            <div key={`i${i}`} className="rounded-md px-3 py-2 flex items-start gap-2 border" style={{ background: 'rgba(255,149,0,0.06)', borderColor: 'rgba(255,149,0,0.25)' }}>
-              <Zap className="w-3.5 h-3.5 mt-px flex-shrink-0 text-[var(--alert-orange)]" />
-              <p className="text-[11px] leading-snug text-[var(--text-primary)]"><span className="text-[var(--text-muted)]">Injected before round {it.round} · </span>{it.text}</p>
-            </div>
-          );
-        }
-        const p = it.post;
-        const a = names.get(p.agent);
-        const key = `g:${p.agent}`;
-        const on = selected === key;
+    <div className="flex flex-col gap-5">
+      {s.worlds.length > 1 && (
+        <div className="flex items-center gap-2.5">
+          <span className={`${LABEL} text-[var(--text-muted)]`}>World</span>
+          <div className="flex-1"><Segmented id="sim-world" size="sm" accent="cyan" value={worlds.length === 1 ? worlds[0] : 'all'} onChange={setWorld}
+            options={[{ value: 'all', label: 'All' }, ...s.worlds.map(w => ({ value: w, label: w, title: worldName(w) }))]} /></div>
+        </div>
+      )}
+      {periods.map(p => {
+        const stat = s.rounds.find(r => r.round === p.index);
+        const injects = s.injects.filter(x => x.round === p.index);
         return (
-          <motion.article key={p.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
-            className={`flex gap-2.5 rounded-md -mx-2 px-2 py-1.5 transition-colors ${on ? 'bg-[var(--hover-accent)]' : ''}`}>
-            <button onClick={() => pick(key)} aria-label={`Open ${a?.name ?? p.agent}`} className="self-start"><Avatar name={a?.name ?? '?'} ring={on ? 'selected' : undefined} /></button>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <button onClick={() => pick(key)} className="text-[11.5px] font-semibold truncate text-[var(--text-heading)] hover:text-[var(--gold-light)]">{a?.name ?? p.agent}</button>
-                <span className="text-[10px] truncate text-[var(--text-muted)]">{a?.role}</span>
-                <span className="ml-auto"><ViewTag post={p} frame={s.frame} /></span>
-              </div>
-              <p className="mt-1 text-[11.5px] leading-[1.55] text-[var(--text-secondary)]"><Mentions text={p.text} s={s} onSelect={onSelect} /></p>
-              <Quotes s={s} cites={p.cites} onSelect={onSelect} />
-              {p.replies.length > 0 && (
-                <div className="mt-1.5 pl-2.5 flex flex-col gap-0.5 border-l border-[var(--border-primary)]">
-                  {p.replies.map((r, j) => {
-                    const linkKey = `link:rp:${p.agent}:${r.to}`;
-                    const tone = r.stance === 'agree' ? T.support : r.stance === 'disagree' ? T.oppose : T.neutral;
-                    return (
-                      <button key={j} onClick={() => pick(linkKey)} className="text-left text-[10.5px] leading-snug text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-                        <span style={{ color: tone }}>{r.stance === 'agree' ? 'Agrees with' : r.stance === 'disagree' ? 'Disputes' : 'Questions'}</span>{' '}
-                        <span className="text-[var(--text-secondary)]">{names.get(r.to)?.name ?? r.to}</span>{r.point && <> · “{r.point}”</>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+          <section key={p.index} className="flex flex-col gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex-1 h-px bg-[var(--border-secondary)]" />
+              <span className="text-[9px] font-mono tracking-[0.14em] uppercase whitespace-nowrap text-[var(--text-muted)]">
+                {p.label}{stat && <> · <span className="text-[var(--gold-light)]" title="The worlds pooled after this period">{pooledLabel(s, stat)}</span></>}
+              </span>
+              <span className="flex-1 h-px bg-[var(--border-secondary)]" />
             </div>
-          </motion.article>
+            {injects.map((inj, i) => (
+              <div key={i} className="rounded-md px-3 py-2 flex items-start gap-2 border" style={{ background: 'rgba(255,149,0,0.06)', borderColor: 'rgba(255,149,0,0.25)' }}>
+                <Zap className="w-3.5 h-3.5 mt-px flex-shrink-0 text-[var(--alert-orange)]" />
+                <p className="text-[11px] leading-snug text-[var(--text-primary)]"><span className="text-[var(--text-muted)]">Injected into every world · </span>{inj.text}</p>
+              </div>
+            ))}
+            {worlds.map(w => {
+              const k = `${w}:${p.index}`;
+              // The newest period, or a single world, shows its moves; older periods across every world fold them away.
+              const showMoves = p.index === reached || worlds.length === 1 || open.has(k);
+              return <WorldPeriod key={w} s={s} world={w} period={p} cast={cast} showMoves={showMoves} onToggle={p.index === reached || worlds.length === 1 ? undefined : () => toggle(k)} selected={selected} onSelect={onSelect} />;
+            })}
+          </section>
         );
       })}
-      {items.length > limit && <button onClick={() => setLimit(l => l + 30)} className={`self-center h-7 px-3 rounded-md ${LABEL} text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-accent)]`}>Show earlier</button>}
     </div>
   );
 }
 
-/** How a panelist moved across the rounds, on the same scale as the rest of the panel. */
-export function Spark({ s, agent, on, width = 44 }: { s: RunState; agent: string; on: boolean; width?: number }) {
-  if (s.posts.filter(p => p.agent === agent).length < 2) return <span style={{ width }} className="flex-shrink-0" />;
-  const last = s.rounds[s.rounds.length - 1]?.shares;
-  const lead = last ? leader(last) : 0;
-  const [elo, ehi] = rangeOf(s);
-  const view = (p: Post) => s.frame?.kind === 'number' ? positionIn(p.estimate?.value ?? NaN, elo, ehi)
-    : s.frame?.kind === 'choice' ? p.shares?.[lead] ?? 0 : p.probability;
-  const all = s.posts.map(view).filter(Number.isFinite);
-  const [lo, hi] = fit(all.length ? all : [0.5], 0.15);
-  const vals = s.posts.filter(p => p.agent === agent).map(view);
-  const W = width, H = 16;
-  const pts = vals.map((v, i) => [2 + (i / (vals.length - 1)) * (W - 4), H - 2 - ((v - lo) / (hi - lo)) * (H - 4)] as [number, number]);
-  return <svg width={W} height={H} aria-hidden className="flex-shrink-0"><path d={smooth(pts)} fill="none" strokeWidth={1.3} strokeLinecap="round" style={{ stroke: on ? T.gold : T.body, opacity: on ? 1 : 0.7 }} /></svg>;
-}
+/** One world in one period: what happened, where it left the question, and what each actor did. */
+function WorldPeriod({ s, world, period, cast, showMoves, onToggle, selected, onSelect }: {
+  s: RunState; world: string; period: Period; cast: Actor[]; showMoves: boolean; onToggle?: () => void; selected: string | null; onSelect: (k: string | null) => void;
+}) {
+  const point = s.points.find(x => x.world === world && x.period === period.index);
+  const resolvedBefore = s.points.find(x => x.world === world && x.period < period.index && x.resolved);
+  const events = s.events.filter(e => e.world === world && e.period === period.index && e.kind !== 'injected');
+  const moves = cast.map(a => s.moves.find(m => m.world === world && m.period === period.index && m.actor === a.id)).filter((m): m is Move => !!m);
+  const deciding = cast.filter(a => s.thinking[`${world}:${a.id}`] === period.index);
+  const key = `w:${world}`;
+  const pick = (k: string) => onSelect(selected === k ? null : k);
 
-export function PanelList({ s, selected, onSelect }: { s: RunState; selected: string | null; onSelect: (k: string | null) => void }) {
-  const latest = latestPosts(s);
-  const refs = useRef(new Map<string, HTMLButtonElement>());
-  useEffect(() => {
-    if (selected?.startsWith('g:')) refs.current.get(selected.slice(2))?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [selected]);
-  if (!s.agents.length) return <Empty>The panel has not been assembled yet.</Empty>;
+  if (resolvedBefore) {
+    return (
+      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+        <WorldChip world={world} on={selected === key} onClick={() => pick(key)} />
+        Settled in period {resolvedBefore.period}: <span className="text-[var(--text-secondary)]">{resolvedBefore.resolved}</span>
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col">
-      {s.frame?.kind === 'choice' && (
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mb-2 text-[9px] font-mono tracking-[0.1em] uppercase text-[var(--text-muted)]">
-          {s.frame.outcomes.map((o, i) => <span key={o} className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full" style={{ background: outcomeColor(i) }} />{o}</span>)}
+    <div className="rounded-lg border border-[var(--border-secondary)] bg-white/[0.015] px-3 py-2.5 flex flex-col gap-2.5">
+      <div className="flex items-center gap-2 min-w-0">
+        <WorldChip world={world} on={selected === key} onClick={() => pick(key)} />
+        {point ? <span className="ml-auto"><PointTag point={point} frame={s.frame} /></span>
+          : deciding.length ? <span className="ml-auto inline-flex items-center gap-1.5 text-[9.5px] text-[var(--cyan-primary)]"><Loader2 className="w-3 h-3 animate-spin" />{deciding.length} deciding</span> : null}
+      </div>
+      {point?.note && <p className="text-[11px] leading-snug text-[var(--text-secondary)]"><Mentions text={point.note} s={s} onSelect={onSelect} /></p>}
+      {events.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {events.map(e => <EventRow key={e.id} s={s} event={e} on={selected === `e:${e.id}`} onSelect={onSelect} />)}
         </div>
       )}
-      <div className="flex flex-col divide-y divide-[var(--border-secondary)]">
-        {s.agents.map(a => {
-          const post = latest.get(a.id);
-          const thinking = a.id in s.thinking;
-          const key = `g:${a.id}`;
-          const on = selected === key;
-          return (
-            <button key={a.id} ref={el => { if (el) refs.current.set(a.id, el); }} onClick={() => onSelect(on ? null : key)}
-              className={`flex items-center gap-2.5 -mx-2 px-2 py-2 text-left transition-colors hover:bg-[var(--hover-accent)] ${on ? 'bg-[var(--hover-accent)]' : ''}`}>
-              <Avatar name={a.name} size={30} ring={on ? 'selected' : thinking ? 'thinking' : undefined} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[11.5px] font-semibold truncate text-[var(--text-heading)]">{a.name}</span>
-                <span className="block text-[10px] truncate text-[var(--text-muted)]">{a.role}{a.place && ` · ${a.place}`}</span>
-              </span>
-              <Spark s={s} agent={a.id} on={on} />
-              {thinking ? <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0 text-[var(--cyan-primary)]" /> : post ? <ViewTag post={post} frame={s.frame} /> : <span className="text-[var(--text-muted)]">—</span>}
-            </button>
-          );
-        })}
+      {moves.length > 0 && (showMoves ? (
+        <div className="flex flex-col gap-2.5 pt-1 border-t border-[var(--border-secondary)]">
+          {onToggle && <button onClick={onToggle} className={`self-start ${LABEL} !text-[8px] text-[var(--text-muted)] hover:text-[var(--text-primary)]`}>Hide the moves</button>}
+          {moves.map(m => <MoveRow key={m.id} s={s} move={m} on={selected === `a:${m.actor}`} onSelect={onSelect} />)}
+        </div>
+      ) : (
+        <button onClick={onToggle} className={`self-start inline-flex items-center gap-1 ${LABEL} !text-[8px] text-[var(--text-muted)] hover:text-[var(--text-primary)]`}>
+          <ChevronDown className="w-3 h-3" />{moves.length} move{moves.length === 1 ? '' : 's'}
+        </button>
+      ))}
+      {showMoves && deciding.length > 0 && (
+        <p className="inline-flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
+          <Loader2 className="w-3 h-3 animate-spin text-[var(--cyan-primary)]" />Deciding: {deciding.map(a => a.name).join(', ')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WorldChip({ world, on, onClick }: { world: string; on: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} title={`Open ${worldName(world)}`}
+      className={`inline-flex items-center gap-1.5 h-5 px-1.5 rounded border ${LABEL} !text-[8.5px] transition-colors`}
+      style={{ color: T.cyan, borderColor: on ? T.cyan : cyan(0.3), background: on ? cyan(0.12) : cyan(0.05) }}>
+      <TypeIcon k={`w:${world}`} className="w-3 h-3" />{worldName(world)}
+    </button>
+  );
+}
+
+/** Something that happened in a world, dated, with which way it pushed the question. */
+export function EventRow({ s, event, on, onSelect }: { s: RunState; event: SimEvent; on: boolean; onSelect: (k: string | null) => void }) {
+  const key = `e:${event.id}`;
+  const surprise = event.kind === 'shock';
+  return (
+    <button onClick={() => onSelect(on ? null : key)}
+      className={`flex items-start gap-2 -mx-1.5 px-1.5 py-1 rounded text-left transition-colors hover:bg-[var(--hover-accent)] ${on ? 'bg-[var(--hover-accent)]' : ''}`}>
+      <TypeIcon k={key} subtype={event.kind} className="w-3.5 h-3.5 mt-[2px] flex-shrink-0" style={{ color: surprise ? T.orange : T.cyan }} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 text-[9px] font-mono tracking-[0.08em] text-[var(--text-muted)]">
+          {event.date}{surprise && <span style={{ color: T.orange }}>· SURPRISE</span>}{event.place && <span className="truncate">· {event.place}</span>}
+          <span className="ml-auto flex-shrink-0"><PushTag c={event} frame={s.frame} /></span>
+        </span>
+        <span className="block text-[11.5px] font-medium leading-snug text-[var(--text-heading)]"><Mentions text={event.title} s={s} onSelect={onSelect} /></span>
+        {event.detail && <span className="block mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]"><Mentions text={event.detail} s={s} onSelect={onSelect} /></span>}
+      </span>
+    </button>
+  );
+}
+
+/** What an actor did in a period: the act, what it said, who it was aimed at, and what it quoted. */
+export function MoveRow({ s, move, on, onSelect, showWorld = false }: { s: RunState; move: Move; on: boolean; onSelect: (k: string | null) => void; showWorld?: boolean }) {
+  const actor = s.actors.find(a => a.id === move.actor);
+  const key = `a:${move.actor}`;
+  const pick = () => onSelect(on ? null : key);
+  const targets = move.targets.map(t => s.actors.find(a => a.id === t)).filter((a): a is Actor => !!a);
+  return (
+    <motion.article initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
+      className={`flex gap-2.5 rounded-md -mx-1.5 px-1.5 py-1 transition-colors ${on ? 'bg-[var(--hover-accent)]' : ''}`}>
+      <button onClick={pick} aria-label={`Open ${actor?.name ?? move.actor}`} className="self-start"><Avatar name={actor?.name ?? '?'} size={24} ring={on ? 'selected' : undefined} /></button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={pick} className="text-[11px] font-semibold truncate text-[var(--text-heading)] hover:text-[var(--gold-light)]">{actor?.name ?? move.actor}</button>
+          <StanceTag stance={move.stance} />
+          {targets.length > 0 && <span className="text-[9.5px] truncate text-[var(--text-muted)]">→ {targets.map(t => t.name).join(', ')}</span>}
+          {showWorld && <span className={`ml-auto flex-shrink-0 ${LABEL} !text-[7.5px] text-[var(--cyan-primary)]`}>{worldName(move.world)} · P{move.period}</span>}
+        </div>
+        <p className="mt-0.5 text-[11.5px] leading-[1.5] text-[var(--text-primary)]"><Mentions text={move.action} s={s} onSelect={onSelect} /></p>
+        {move.statement && <p className="mt-0.5 text-[11px] leading-snug italic text-[var(--text-secondary)]">“{move.statement}”</p>}
+        <Quotes s={s} cites={move.cites} onSelect={onSelect} />
       </div>
+    </motion.article>
+  );
+}
+
+/** The actors who play the simulation, each with what it wants and how it stands in every world. */
+export function ActorsList({ s, selected, onSelect }: { s: RunState; selected: string | null; onSelect: (k: string | null) => void }) {
+  const cast = castOf(s);
+  const refs = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    if (selected?.startsWith('a:')) refs.current.get(selected.slice(2))?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selected]);
+  if (!cast.length) return <Empty>{s.status === 'running' ? 'The actors who decide this are being cast.' : 'No actors were cast in this run.'}</Empty>;
+  const thinking = new Set(Object.keys(s.thinking).map(k => k.slice(k.indexOf(':') + 1)));
+  return (
+    <div className="flex flex-col divide-y divide-[var(--border-secondary)]">
+      {cast.map(a => {
+        const key = `a:${a.id}`;
+        const on = selected === key;
+        const latest = s.worlds.map(w => ({ w, m: s.moves.filter(m => m.actor === a.id && m.world === w).pop() }));
+        return (
+          <button key={a.id} ref={el => { if (el) refs.current.set(a.id, el); }} onClick={() => onSelect(on ? null : key)}
+            className={`flex items-center gap-2.5 -mx-2 px-2 py-2 text-left transition-colors hover:bg-[var(--hover-accent)] ${on ? 'bg-[var(--hover-accent)]' : ''}`}>
+            <Avatar name={a.name} size={30} ring={on ? 'selected' : thinking.has(a.id) ? 'thinking' : undefined} />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11.5px] font-semibold truncate text-[var(--text-heading)]">{a.name}</span>
+              <span className="block text-[10px] truncate text-[var(--text-muted)]">{a.persona?.goal || a.role}</span>
+            </span>
+            {thinking.has(a.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0 text-[var(--cyan-primary)]" /> : (
+              <span className="flex items-center gap-1 flex-shrink-0" aria-label="Its latest move in each world">
+                {latest.map(({ w, m }) => (
+                  <span key={w} title={`${worldName(w)}: ${m ? `${STANCE[m.stance].word.toLowerCase()} · ${m.action}` : 'no move yet'}`}
+                    className="w-2 h-2 rounded-full" style={{ background: m ? STANCE[m.stance].color : 'transparent', boxShadow: m ? undefined : 'inset 0 0 0 1px var(--border-primary)' }} />
+                ))}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -196,11 +275,10 @@ export function PanelList({ s, selected, onSelect }: { s: RunState; selected: st
 /** What the arcs (and the graph's edges) mean, in their own Style Studio colours. */
 export function Legend({ floating = false, compact = false }: { floating?: boolean; compact?: boolean }) {
   const rows: { label: string; color: string; dash?: string; opacity?: number }[] = [
-    { label: compact ? 'Aligned' : 'Aligned · agrees', color: T.support },
-    { label: compact ? 'Opposed' : 'Opposed · disputes', color: T.oppose },
-    { label: compact ? 'Between' : 'Between · questions', color: T.neutral },
+    { label: compact ? 'Aligned' : 'Aligned · cooperates', color: T.support },
+    { label: compact ? 'Opposed' : 'Opposed · presses', color: T.oppose },
+    { label: compact ? 'Between' : 'Between · holds', color: T.neutral },
     { label: 'Evidence', color: T.neutral, opacity: 0.55 },
-    { label: 'Weighing', color: T.neutral, dash: '4 3' },
     // Quotes are threads in the graph only; the globe does not draw them.
     ...(floating ? [] : [{ label: 'Quote', color: T.body, dash: '0.5 3.5' }]),
   ];
@@ -219,8 +297,8 @@ export function Legend({ floating = false, compact = false }: { floating?: boole
 export function LineGlyph({ link }: { link: Link }) {
   return (
     <svg width="18" height="6" className="flex-shrink-0" aria-hidden>
-      <line x1="1" x2="17" y1="3" y2="3" strokeWidth="2" strokeDasharray={link.kind === 'focus' ? '4 3' : undefined} strokeLinecap="round"
-        style={{ stroke: toneColor(link.tone), opacity: link.kind === 'evidence' ? 0.55 : 1 }} />
+      <line x1="1" x2="17" y1="3" y2="3" strokeWidth="2" strokeDasharray={link.kind === 'cite' ? '0.5 3.5' : undefined} strokeLinecap="round"
+        style={{ stroke: link.kind === 'cite' ? T.body : toneColor(link.tone), opacity: link.kind === 'evidence' ? 0.55 : 1 }} />
     </svg>
   );
 }
@@ -249,6 +327,7 @@ export function WorldList({ s, selected, onSelect }: { s: RunState; selected: st
               <span className="block text-[11.5px] font-semibold truncate text-[var(--text-heading)]">{a.name}</span>
               <span className="block text-[10px] truncate text-[var(--text-muted)]">{a.role}</span>
             </span>
+            {a.persona && <span className={`${LABEL} !text-[7.5px] text-[var(--cyan-primary)]`} title="Plays in the simulation">Plays</span>}
             <span className="text-[8.5px] font-mono tracking-[0.14em] uppercase text-[var(--text-muted)]">{a.kind}</span>
           </Row>
         ))}
@@ -275,7 +354,7 @@ export function WorldList({ s, selected, onSelect }: { s: RunState; selected: st
 export function ContextList({ s, selected, onSelect }: { s: RunState; selected: string | null; onSelect: (k: string | null) => void }) {
   if (!s.context.length) return s.status === 'running' && !s.actors.length ? <Empty>Reading the live feeds.</Empty> : null;
   const cited = new Set(s.links.filter(l => l.kind === 'evidence').map(l => l.from.slice(2)));
-  // How often the panel and the report quoted each source: the most quoted first, the unquoted after.
+  // How often the actors and the report quoted each source: the most quoted first, the unquoted after.
   const quoted = new Map<string, number>();
   for (const l of s.links) if (l.kind === 'cite') quoted.set(l.to.slice(2), (quoted.get(l.to.slice(2)) ?? 0) + 1);
   const order = s.context.map((c, i) => ({ c, i })).sort((a, b) => (quoted.get(b.c.id) ?? 0) - (quoted.get(a.c.id) ?? 0) || a.i - b.i).map(x => x.c);
@@ -310,7 +389,8 @@ export function AskBox({ s, oi, engine, keyValue, ready, target, setTarget, onSe
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<{ who: string; text: string; you: boolean }[]>([]);
-  const targetName = target === 'report' ? 'The report agent' : s.agents.find(a => a.id === target)?.name ?? target;
+  const cast = castOf(s);
+  const targetName = target === 'report' ? 'The report agent' : cast.find(a => a.id === target)?.name ?? target;
   const send = async () => {
     const m = message.trim();
     if (!m || busy) return;
@@ -321,14 +401,14 @@ export function AskBox({ s, oi, engine, keyValue, ready, target, setTarget, onSe
     setLog(l => [...l, { who: targetName, text: out.reply ?? out.error ?? '…', you: false }]);
     setBusy(false);
   };
-  if (!s.agents.length) return <Empty>The panel can be questioned once it has been assembled.</Empty>;
+  if (!cast.length) return <Empty>The actors can be questioned once they have been cast.</Empty>;
   return (
     <div className="flex flex-col gap-3">
       <select value={target} onChange={e => setTarget(e.target.value)} aria-label="Who to ask" className={`${FIELD} h-8 px-2 text-[11px]`}>
-        <option value="report" disabled={!s.report} style={{ background: '#0C0E1A' }}>The report agent{!s.report ? ' (once the report is written)' : ''}</option>
-        {s.agents.map(a => <option key={a.id} value={a.id} style={{ background: '#0C0E1A' }}>{a.name} · {a.role}</option>)}
+        <option value="report" disabled={!s.report} style={{ background: '#0C0E1A' }}>The report agent{!s.report ? ' (once the prediction is written)' : ''}</option>
+        {cast.map(a => <option key={a.id} value={a.id} style={{ background: '#0C0E1A' }}>{a.name} · {a.role}</option>)}
       </select>
-      {log.length === 0 && <Empty>Ask why the forecast landed where it did, what would change a panelist&apos;s mind, or what to watch next. Questions run on your key.</Empty>}
+      {log.length === 0 && <Empty>Ask the report agent why the prediction landed where it did, or ask an actor what it would do if things changed. Questions run on your key.</Empty>}
       <div aria-live="polite" className="flex flex-col gap-3">
         {log.map((m, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -341,7 +421,7 @@ export function AskBox({ s, oi, engine, keyValue, ready, target, setTarget, onSe
       </div>
       <div className="flex items-center gap-2 h-9 pl-3 pr-1 rounded-md border border-[var(--border-primary)] bg-black/40 focus-within:border-[var(--border-active)] transition-colors">
         <input value={message} onChange={e => setMessage(e.target.value.slice(0, 1000))} onKeyDown={e => e.key === 'Enter' && send()} disabled={!ready || (target === 'report' && !s.report)}
-          placeholder={!ready ? 'Add your key to ask' : `Ask ${targetName.replace(/^The /, 'the ')}`} aria-label="Your question to the panel"
+          placeholder={!ready ? 'Add your key to ask' : `Ask ${targetName.replace(/^The /, 'the ')}`} aria-label="Your question"
           className="flex-1 bg-transparent outline-none text-[11.5px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] disabled:opacity-50" />
         <button onClick={send} disabled={!ready || busy || !message.trim()} aria-label="Send"
           className="w-7 h-7 rounded flex items-center justify-center text-[var(--gold-light)] hover:bg-[var(--hover-accent)] disabled:opacity-30 transition-colors">
@@ -355,8 +435,8 @@ export function AskBox({ s, oi, engine, keyValue, ready, target, setTarget, onSe
 export function HistoryList({ oi, onPick }: { oi: OiClient; onPick: (id: string) => void }) {
   return (
     <section className="px-4 py-4">
-      <SectionTitle count={oi.history.length || undefined}>Your forecasts</SectionTitle>
-      {!oi.history.length && <Empty>Nothing yet. Forecasts you run are listed here, in this browser only. The server keeps a run for a few hours.</Empty>}
+      <SectionTitle count={oi.history.length || undefined}>Your predictions</SectionTitle>
+      {!oi.history.length && <Empty>Nothing yet. Predictions you run are listed here, in this browser only. The server keeps a run for a few hours.</Empty>}
       <div className="flex flex-col divide-y divide-[var(--border-secondary)]">
         {oi.history.map(h => (
           <div key={h.id} className="group flex items-center gap-3 py-2">

@@ -2,26 +2,27 @@
 /**
  * OSIRIS OI: the timeline view.
  *
- * The debate as it moved: above, the panel's pooled view round by round with
- * its spread, the base rate (or today's value), injected events and the
- * report's final word; below, one lane per panelist with the view they gave
- * each round and how far it moved. A lane opens its panelist.
+ * The simulation over dated time: above, the worlds pooled period by period
+ * with their range, the base rate (or today's value), injected events and the
+ * report's final word; below, one lane per simulated world with where the
+ * question stood in it after each period, how far it moved, and what
+ * happened. A lane opens its world; an event opens itself.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, Loader2 } from 'lucide-react';
 import { formatAmount } from '@/lib/oi/forecast';
 import { timelineOf, type Timeline, type TimelineCell, type TimelineLane } from '@/lib/oi/timeline';
-import type { RunState } from '@/lib/oi/state';
+import { castOf, type RunState } from '@/lib/oi/state';
 import { LABEL, SOLID, T, cyan, fit, gold, smooth } from './theme';
-import { Avatar, Empty } from './atoms';
+import { Empty, TypeIcon } from './atoms';
 
 const NAME_COL = 196;
-const MIN_COL = 92;
+const MIN_COL = 150;
 
 /** A change, in the question's own terms: points of probability or share, or the amount itself. */
 function deltaText(s: RunState, cell: TimelineCell, prev: TimelineCell | null): string {
   if (s.frame?.kind === 'number') {
-    const a = prev?.post.estimate?.value, b = cell.post.estimate?.value;
+    const a = prev?.point.value, b = cell.point.value;
     if (a === undefined || b === undefined) return '';
     const d = b - a;
     return `${d > 0 ? '+' : d < 0 ? '−' : ''}${formatAmount(Math.abs(d))}`;
@@ -40,7 +41,7 @@ function Delta({ s, cell, prev }: { s: RunState; cell: TimelineCell; prev: Timel
   );
 }
 
-/** How far a panelist moved from their first word to their last. */
+/** How far a world moved from its first period to its last. */
 function Drift({ s, lane }: { s: RunState; lane: TimelineLane }) {
   const spoken = lane.cells.filter((c): c is TimelineCell => c !== null);
   if (lane.drift === null || spoken.length < 2) return <span className="px-2.5 py-2 text-[10px] font-mono text-[var(--text-muted)]">—</span>;
@@ -55,8 +56,8 @@ function Drift({ s, lane }: { s: RunState; lane: TimelineLane }) {
 }
 
 /**
- * The part of the scale the debate actually used, at least a fifth of it, so
- * a panel moving between 44% and 46% reads as moving. Chart and lanes share it.
+ * The part of the scale the simulation actually used, at least a fifth of it,
+ * so worlds moving between 44% and 46% read as moving. Chart and lanes share it.
  */
 function windowOf(tl: Timeline): [number, number] {
   const vals: number[] = [];
@@ -71,7 +72,7 @@ function windowOf(tl: Timeline): [number, number] {
   return [lo, hi];
 }
 
-/** The pooled view across the rounds, drawn in the columns the lanes use. */
+/** The worlds pooled across the periods, drawn in the columns the lanes use. */
 function PooledChart({ tl, cols, win }: { tl: Timeline; cols: number; win: [number, number] }) {
   const box = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
@@ -111,7 +112,7 @@ function PooledChart({ tl, cols, win }: { tl: Timeline; cols: number; win: [numb
             return (
               <g key={k}>
                 <line x1={ix} x2={ix} y1={4} y2={H - 4} strokeDasharray="2 3" style={{ stroke: 'var(--alert-orange)', opacity: 0.8 }} />
-                <title>{`Injected before round ${inj.round}: ${inj.text}`}</title>
+                <title>{`Injected in period ${inj.round}: ${inj.text}`}</title>
                 <circle cx={ix} cy={6} r={3} style={{ fill: 'var(--alert-orange)' }} />
               </g>
             );
@@ -144,46 +145,63 @@ function PooledChart({ tl, cols, win }: { tl: Timeline; cols: number; win: [numb
 }
 
 function LaneRow({ s, lane, tl, cols, template, win, selected, onSelect }: {
-  s: RunState; lane: TimelineLane; tl: Timeline; cols: number; template: string; win: [number, number]; selected: boolean; onSelect: (k: string | null) => void;
+  s: RunState; lane: TimelineLane; tl: Timeline; cols: number; template: string; win: [number, number]; selected: string | null; onSelect: (k: string | null) => void;
 }) {
   const at = (v: number) => Math.min(100, Math.max(0, ((v - win[0]) / (win[1] - win[0] || 1)) * 100));
-  const agentId = lane.key.slice(2);
-  const thinkingRound = s.thinking[agentId];
+  const world = lane.key.slice(2);
+  const on = selected === lane.key;
+  const pick = (k: string) => onSelect(selected === k ? null : k);
+  const deciding = (r: number) => Object.entries(s.thinking).some(([k, p]) => k.startsWith(`${world}:`) && p === r);
   return (
-    <button onClick={() => onSelect(selected ? null : lane.key)} aria-pressed={selected}
-      className={`grid w-full items-center text-left border-b border-[var(--border-secondary)] transition-colors hover:bg-[var(--hover-accent)] ${selected ? 'bg-[var(--hover-accent)]' : ''}`}
-      style={{ gridTemplateColumns: template, boxShadow: selected ? `inset 2px 0 0 ${T.gold}` : undefined }}>
-      <span className="flex items-center gap-2 px-3 py-2 min-w-0 sticky left-0 z-10" style={{ background: SOLID }}>
-        <Avatar name={lane.name} size={22} ring={selected ? 'selected' : thinkingRound !== undefined ? 'thinking' : undefined} />
+    <div className={`grid w-full items-stretch border-b border-[var(--border-secondary)] transition-colors ${on ? 'bg-[var(--hover-accent)]' : ''}`}
+      style={{ gridTemplateColumns: template, boxShadow: on ? `inset 2px 0 0 ${T.cyan}` : undefined }}>
+      <button onClick={() => pick(lane.key)} aria-pressed={on} className="flex items-start gap-2 px-3 py-2 min-w-0 sticky left-0 z-10 text-left hover:bg-[var(--hover-accent)]" style={{ background: SOLID }}>
+        <span className="w-[22px] h-[22px] rounded-md flex items-center justify-center flex-shrink-0 border" style={{ color: T.cyan, borderColor: cyan(on ? 0.7 : 0.3), background: cyan(0.08) }}>
+          <TypeIcon k={lane.key} className="w-3 h-3" />
+        </span>
         <span className="min-w-0">
           <span className="block text-[11px] font-semibold truncate text-[var(--text-heading)]">{lane.name}</span>
-          <span className="block text-[9.5px] truncate text-[var(--text-muted)]">{lane.role}</span>
+          <span className="block text-[9.5px] leading-snug line-clamp-2 text-[var(--text-muted)]">{lane.role}</span>
         </span>
-      </span>
+      </button>
       {tl.rounds.map((r, idx) => {
         const cell = lane.cells[idx];
         const prev = lane.cells.slice(0, idx).reverse().find((c): c is TimelineCell => c !== null) ?? null;
         if (!cell) {
           return (
             <span key={r} className="px-2.5 py-2 text-[10px] font-mono text-[var(--text-muted)]">
-              {thinkingRound === r ? <Loader2 className="w-3 h-3 animate-spin text-[var(--cyan-primary)]" /> : '—'}
+              {deciding(r) ? <Loader2 className="w-3 h-3 animate-spin text-[var(--cyan-primary)]" /> : '—'}
             </span>
           );
         }
         return (
-          <span key={r} className="px-2.5 py-2 min-w-0" title={cell.post.changed && cell.post.changed.toLowerCase() !== 'nothing' ? `Moved by ${cell.post.changed}` : undefined}>
-            <span className="flex items-center gap-1.5">
-              <span className="text-[10.5px] font-mono tabular-nums truncate text-[var(--text-primary)]">{cell.label}</span>
-              <Delta s={s} cell={cell} prev={prev} />
-            </span>
-            <span className="relative mt-1.5 block h-[2px] rounded-full bg-white/[0.07]">
-              <span className="absolute top-1/2 w-[7px] h-[7px] -ml-[3.5px] -mt-[3.5px] rounded-full" style={{ left: `${at(cell.value)}%`, background: selected ? T.goldLight : T.text, boxShadow: selected ? `0 0 6px ${gold(0.8)}` : undefined }} />
-            </span>
+          <span key={r} className="px-2.5 py-2 min-w-0 flex flex-col gap-1.5">
+            <button onClick={() => pick(lane.key)} title={cell.point.note || undefined} className="text-left">
+              <span className="flex items-center gap-1.5">
+                <span className="text-[10.5px] font-mono tabular-nums truncate text-[var(--text-primary)]">{cell.point.resolved ? `Resolved · ${cell.label}` : cell.label}</span>
+                <Delta s={s} cell={cell} prev={prev} />
+              </span>
+              <span className="relative mt-1.5 block h-[2px] rounded-full bg-white/[0.07]">
+                <span className="absolute top-1/2 w-[7px] h-[7px] -ml-[3.5px] -mt-[3.5px] rounded-full" style={{ left: `${at(cell.value)}%`, background: on ? T.cyan : T.text, boxShadow: on ? `0 0 6px ${cyan(0.8)}` : undefined }} />
+              </span>
+            </button>
+            {cell.events.slice(0, 3).map(e => {
+              const key = `e:${e.id}`;
+              const surprise = e.kind === 'shock';
+              return (
+                <button key={e.id} onClick={() => pick(key)} title={`${e.date} · ${e.title}`}
+                  className={`flex items-start gap-1 text-left text-[9.5px] leading-snug transition-colors ${selected === key ? 'text-[var(--text-heading)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
+                  <TypeIcon k={key} subtype={e.kind} className="w-2.5 h-2.5 mt-[2px] flex-shrink-0" style={{ color: surprise || e.kind === 'injected' ? T.orange : T.cyan }} />
+                  <span className="line-clamp-2">{e.title}</span>
+                </button>
+              );
+            })}
+            {cell.events.length > 3 && <button onClick={() => pick(lane.key)} className="self-start text-[9px] font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)]">+{cell.events.length - 3} more</button>}
           </span>
         );
       })}
       {cols > tl.rounds.length && <Drift s={s} lane={lane} />}
-    </button>
+    </div>
   );
 }
 
@@ -193,7 +211,7 @@ export function TimelineView({ s, selected, onSelect }: { s: RunState; selected:
   const template = `${NAME_COL}px repeat(${cols}, minmax(${MIN_COL}px, 1fr))`;
   const win = useMemo(() => windowOf(tl), [tl]);
 
-  if (!s.agents.length) return <div className="h-full flex items-center justify-center"><Empty>The timeline fills in once the panel starts to debate.</Empty></div>;
+  if (!castOf(s).length || !s.worlds.length) return <div className="h-full flex items-center justify-center"><Empty>The timeline fills in once the actors are cast and the worlds start to run.</Empty></div>;
 
   return (
     <div className="h-full flex flex-col">
@@ -201,12 +219,12 @@ export function TimelineView({ s, selected, onSelect }: { s: RunState; selected:
         <div>
           <div className="hud-text text-[10px] text-[var(--gold-primary)]">Timeline</div>
           <div className="mt-0.5 text-[9px] font-mono tracking-[0.14em] text-[var(--text-muted)]">
-            {tl.rounds.length} ROUNDS · {tl.lanes.length} PANELISTS{tl.injects.length ? ` · ${tl.injects.length} INJECTED` : ''}
+            {tl.rounds.length} PERIODS · {tl.lanes.length} WORLDS · {s.events.length} EVENTS{tl.injects.length ? ` · ${tl.injects.length} INJECTED` : ''}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-3 text-[9px] font-mono tracking-[0.12em] text-[var(--text-muted)]">
           <span className="inline-flex items-center gap-1.5"><span className="w-3 h-[2px]" style={{ background: T.gold }} />POOLED</span>
-          <span className="inline-flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm" style={{ background: gold(0.18) }} />SPREAD</span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm" style={{ background: gold(0.18) }} />RANGE</span>
           {tl.reference && <span className="inline-flex items-center gap-1.5"><span className="w-3 border-t border-dashed" style={{ borderColor: T.cyan }} />{s.frame?.kind === 'number' ? 'TODAY' : 'BASE RATE'}</span>}
           {tl.injects.length > 0 && <span className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[var(--alert-orange)]" />INJECT</span>}
         </div>
@@ -215,28 +233,30 @@ export function TimelineView({ s, selected, onSelect }: { s: RunState; selected:
         <div style={{ minWidth: NAME_COL + cols * MIN_COL }}>
           <div className="grid border-b border-[var(--border-secondary)]" style={{ gridTemplateColumns: template }}>
             <div className="px-3 py-3 flex flex-col gap-1 sticky left-0 z-10" style={{ background: SOLID }}>
-              <span className={`${LABEL} text-[var(--text-secondary)]`}>Pooled view</span>
+              <span className={`${LABEL} text-[var(--text-secondary)]`}>The worlds pooled</span>
               <span className="text-[9.5px] leading-snug text-[var(--text-muted)]">
-                {s.frame?.kind === 'number' ? 'The panel’s median, with its middle half' : s.frame?.kind === 'choice' ? `The leading outcome’s share` : 'P(YES), with the middle half of the panel'}
+                {s.frame?.kind === 'number' ? 'The worlds’ median, with their range' : s.frame?.kind === 'choice' ? 'The leading outcome’s pooled share' : 'P(YES) across the worlds, with their range'}
               </span>
             </div>
             <div style={{ gridColumn: `2 / span ${cols}` }} className="py-1"><PooledChart tl={tl} cols={cols} win={win} /></div>
           </div>
           <div className="grid sticky top-0 z-20 border-b border-[var(--border-primary)]" style={{ gridTemplateColumns: template, background: SOLID }}>
-            <span className={`px-3 py-2 ${LABEL} !text-[8.5px] text-[var(--text-muted)] sticky left-0`}>Panelist</span>
+            <span className={`px-3 py-2 ${LABEL} !text-[8.5px] text-[var(--text-muted)] sticky left-0`}>World</span>
             {tl.rounds.map(r => {
               const st = s.rounds.find(x => x.round === r);
               const live = !st && s.status === 'running' && s.phase === 'simulate' && s.steps.filter(x => x.phase === 'simulate').length === r;
+              const period = tl.periods.find(p => p.index === r);
               return (
-                <span key={r} className={`px-2.5 py-2 ${LABEL} !text-[8.5px]`} style={{ color: live ? T.cyan : st ? T.body : T.mute }}>
-                  Round {r}{live && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full align-middle animate-osiris-pulse" style={{ background: T.cyan, boxShadow: `0 0 6px ${cyan(0.8)}` }} />}
+                <span key={r} className="px-2.5 py-2 flex flex-col gap-0.5" style={{ color: live ? T.cyan : st ? T.body : T.mute }}>
+                  <span className={`${LABEL} !text-[8.5px]`}>Period {r}{live && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full align-middle animate-osiris-pulse" style={{ background: T.cyan, boxShadow: `0 0 6px ${cyan(0.8)}` }} />}</span>
+                  {period && <span className="text-[9px] font-mono tracking-[0.04em] text-[var(--text-muted)] truncate">{period.label}</span>}
                 </span>
               );
             })}
             {cols > tl.rounds.length && <span className={`px-2.5 py-2 ${LABEL} !text-[8.5px] text-[var(--gold-primary)]`}>Final · drift</span>}
           </div>
           {tl.lanes.map(lane => (
-            <LaneRow key={lane.key} s={s} lane={lane} tl={tl} cols={cols} template={template} win={win} selected={selected === lane.key} onSelect={onSelect} />
+            <LaneRow key={lane.key} s={s} lane={lane} tl={tl} cols={cols} template={template} win={win} selected={selected} onSelect={onSelect} />
           ))}
         </div>
       </div>

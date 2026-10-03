@@ -595,7 +595,7 @@ export default function Dashboard() {
       const st = assistOi.current.state;
       return st ? {
         question: st.question, status: st.status === 'running' ? st.phaseLabel || 'running' : st.status, answer: currentAnswer(st),
-        objects: objectsOf(st).filter(o => o.type === 'actor' || o.type === 'panelist').map(o => o.title).slice(0, 40),
+        objects: objectsOf(st).filter(o => o.type === 'actor' || o.type === 'world').map(o => o.title).slice(0, 40),
       } : null;
     },
     ui: () => ({ fullscreen: assistTheater.current, stage: assistStage.current }),

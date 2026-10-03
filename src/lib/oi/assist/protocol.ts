@@ -92,13 +92,13 @@ map_view {projection?: "globe"|"flat", style?: "dark"|"satellite"}
   Switch between the 3D globe and the flat map, and the night or satellite basemap.
 
 forecast {question, depth?: "quick"|"standard"|"deep"}
-  Start an OI forecast: a simulated panel of AI forecasters debates the question over several rounds on live intelligence and writes a calibrated answer (a probability, shares per outcome, or an estimate with a range). It makes 15 to 70 model calls on the reader's key, so only when they ask for a forecast, prediction or odds, or chose Forecast mode. Phrase the question so it resolves by a date.
+  Start an OI prediction: OI researches the question, casts the actors who decide it, and plays them against each other over dated periods to the horizon in several parallel simulated worlds, then writes the predicted path, what each actor does, and a calibrated figure (a probability, shares per outcome, or an estimate with a range). It makes 30 to 130 model calls on the reader's key, so only when they ask for a forecast, prediction or odds, or chose Forecast mode. Phrase the question so it resolves by a date.
 
 workspace {open?: boolean, view?: "globe"|"graph"|"timeline"|"table"}
-  Open the full-screen OI workspace (open: false closes it) and choose what its centre shows: the live globe, or for the current forecast its research graph, the timeline of its debate, or tables of its objects. graph, timeline and table need a forecast.
+  Open the full-screen OI workspace (open: false closes it) and choose what its centre shows: the live globe, or for the current forecast its research graph, the timeline of its simulated worlds, or tables of its objects. graph, timeline and table need a forecast.
 
 select {name}
-  Open an object of the current forecast by name: an actor, panelist, source, scenario or signpost (see the forecast's objects in CONTEXT). It opens in the object view and lights up on the globe and in the graph.
+  Open an object of the current forecast by name: an actor, a simulated world ("World A"), an event, a source, a scenario or a signpost (see the forecast's objects in CONTEXT). It opens in the object view and lights up on the globe and in the graph.
 
 clear {}
   Remove your highlights from the map.`;

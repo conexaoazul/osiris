@@ -5,8 +5,9 @@
  * Two ways to use OI, on the reader's own model key. Assist (the default)
  * is a conversation: talk to OI and it works the map for you (flies there,
  * switches layers, finds what is live, marks it, puts it on screen, starts
- * forecasts, drives the workspace). Forecast is the swarm: set up an engine,
- * ask, follow the run, read the report and question the panel.
+ * forecasts, drives the workspace). Forecast is the prediction engine: set up
+ * an engine, ask, watch the actors play it out in parallel worlds, read the
+ * prediction and question the actors.
  *
  * Full screen, with or without a run, it opens the OI workspace
  * (oi/Workspace): the same Forecast / Assist column on the left, the globe,
@@ -95,11 +96,11 @@ export default function OiPanel(props: OiPanelProps) {
   const info = providerInfo(engine.provider);
   const ready = !info.needsKey || key.length > 0;
   const selection = s ? resolve(s, selected) : null;
-  // Until someone picks a tab: the debate while it runs, the report once there is one.
-  const activeTab: Tab = tab ?? (s?.report ? 'report' : 'debate');
+  // Until someone picks a tab: the simulation while it runs, the prediction once there is one.
+  const activeTab: Tab = tab ?? (s?.report ? 'report' : 'sim');
 
-  // Asking a panelist opens the Ask list; in the workspace that means stepping back from the object to the lists.
-  const askAgent = (id: string) => { setAskTarget(id); setTab('ask'); if (theater) onSelect(null); };
+  // Asking an actor opens the Ask list; in the workspace that means stepping back from the object to the lists.
+  const askActor = (id: string) => { setAskTarget(id); setTab('ask'); if (theater) onSelect(null); };
   const reset = () => { oi.clear(); onSelect(null); setShowHistory(false); setTab(null); };
 
   const errorBox = oi.error ? (
@@ -155,7 +156,7 @@ export default function OiPanel(props: OiPanelProps) {
       </>
     );
     const node = (
-      <Workspace s={s} oi={oi} selected={selected} onSelect={onSelect} onLocate={props.onLocate} onAsk={askAgent}
+      <Workspace s={s} oi={oi} selected={selected} onSelect={onSelect} onLocate={props.onLocate} onAsk={askActor}
         onTheater={props.onTheater} focus={props.focus} onFocus={props.onFocus} following={props.following} onFollow={props.onFollow}
         mode={props.mode} onMode={props.onMode} stage={props.stage} onStage={props.onStage}
         lists={tabs} errorBox={errorBox} assistView={assistView} askView={askView} engineMenu={engineMenu}
@@ -175,8 +176,8 @@ export default function OiPanel(props: OiPanelProps) {
       <span className={`${LABEL} !text-[9.5px] truncate`} style={{ color: accent }}>{assisting ? 'Assist' : 'Forecast'}</span>
       <div className="ml-auto flex items-center gap-0.5">
         <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} />
-        {!assisting && <IconButton title={showHistory ? 'Back' : 'Your forecasts'} onClick={() => setShowHistory(v => !v)} active={showHistory}><History className="w-3.5 h-3.5" /></IconButton>}
-        {!assisting && s && <IconButton title="New forecast" onClick={reset}><Plus className="w-3.5 h-3.5" /></IconButton>}
+        {!assisting && <IconButton title={showHistory ? 'Back' : 'Your predictions'} onClick={() => setShowHistory(v => !v)} active={showHistory}><History className="w-3.5 h-3.5" /></IconButton>}
+        {!assisting && s && <IconButton title="New prediction" onClick={reset}><Plus className="w-3.5 h-3.5" /></IconButton>}
         {!embedded && props.onTheater && <IconButton title="Full screen: the OI workspace" onClick={() => props.onTheater?.(true)}><Maximize2 className="w-3.5 h-3.5" /></IconButton>}
         {props.onClose && !embedded && <IconButton title="Close (the run keeps going)" onClick={props.onClose}><X className="w-3.5 h-3.5" /></IconButton>}
       </div>
@@ -223,7 +224,7 @@ export default function OiPanel(props: OiPanelProps) {
           <AnimatePresence mode="wait">
             {selection && (
               <motion.div key={selection.key} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="px-4 pt-4">
-                <ObjectView s={s} sel={selection} onSelect={onSelect} onLocate={props.onLocate} onAsk={askAgent} />
+                <ObjectView s={s} sel={selection} onSelect={onSelect} onLocate={props.onLocate} onAsk={askActor} />
               </motion.div>
             )}
           </AnimatePresence>

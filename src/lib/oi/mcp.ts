@@ -199,7 +199,7 @@ function headline(run: Run): string {
   return `Still running: ${s.phaseLabel || s.phase}.${sofar} Call oi_get_run with wait_seconds to wait for the forecast.`;
 }
 
-/** Waits for a run, reporting each phase and round as progress when the client asked for it. */
+/** Waits for a run, reporting each phase and period as progress when the client asked for it. */
 async function follow(run: Run, seconds: number, ctx: McpContext): Promise<void> {
   if (seconds <= 0 || run.state.status !== 'running') return;
   // Past this address's share of held connections, answer at once: the caller polls instead.

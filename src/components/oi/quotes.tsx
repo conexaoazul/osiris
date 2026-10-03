@@ -1,8 +1,8 @@
 'use client';
 /**
- * OSIRIS OI: what a panelist quoted, and where from.
+ * OSIRIS OI: what an actor quoted, and where from.
  *
- * Under a post, each quote in its own words with the source it came from, a
+ * Under a move, each quote in its own words with the source it came from, a
  * click away: the headline, the passage of the asker's data. A quote found
  * word for word in its source is marked verbatim; one that is not is marked
  * as a paraphrase, so a reader knows which threads hold all the way.
@@ -39,17 +39,17 @@ export function SourceLink({ url, label = 'Open source', className = '' }: { url
   );
 }
 
-/** Which way a quote moved its panelist, in the question's terms. */
+/** Which way a quote (or an event) pushed, in the question's terms. */
 export function PushTag({ c, frame }: { c: Pick<Citation, 'push' | 'favors'>; frame: Frame | null }) {
   const push = c.push ?? 'neutral';
   if (push === 'neutral' && !c.favors) {
-    return <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-0.5 text-[var(--text-muted)]`} title="Context: did not move the forecast"><Minus className="w-2.5 h-2.5" />Context</span>;
+    return <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-0.5 text-[var(--text-muted)]`} title="Context: pushed neither way"><Minus className="w-2.5 h-2.5" />Context</span>;
   }
   const dir = push === 'no' ? 'no' : 'yes';
   const color = leanTo(frame, dir, c.favors ?? '');
   const word = frame?.kind === 'choice' ? (c.favors ? `For ${c.favors}` : 'For') : frame?.kind === 'number' ? (dir === 'yes' ? 'Pushes up' : 'Pushes down') : (dir === 'yes' ? 'Toward YES' : 'Toward NO');
   return (
-    <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-0.5 max-w-[150px]`} style={{ color }} title="Which way it moved the forecast">
+    <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-0.5 max-w-[150px]`} style={{ color }} title="Which way it pushes the question">
       {dir === 'yes' ? <ArrowUpRight className="w-2.5 h-2.5 flex-shrink-0" /> : <ArrowDownRight className="w-2.5 h-2.5 flex-shrink-0" />}
       <span className="truncate">{word}</span>
     </span>
@@ -64,7 +64,7 @@ export function Verbatim({ exact }: { exact: boolean }) {
 }
 
 export function Quotes({ s, cites, onSelect }: { s: RunState; cites: Citation[] | undefined; onSelect: (key: string | null) => void }) {
-  // A run made before quoting has no cites at all; one where the panelist quoted nothing says so.
+  // A move made with no sources to quote has no cites at all; one where the actor quoted nothing says so.
   if (!cites) return null;
   if (!cites.length) {
     return s.context.length ? <p className={`mt-1.5 ${LABEL} !text-[7.5px] text-[var(--text-muted)]`}>No source quoted</p> : null;
