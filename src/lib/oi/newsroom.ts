@@ -10,7 +10,9 @@
  * the question. Social networks are not a newsroom: a link to one is dropped,
  * whoever carried it.
  *
- * Each feed is read at most every fifteen minutes, whatever the number of runs.
+ * A story counts when it names the question's subject and, for a question of
+ * several words, shares at least two of them. Each feed is read at most
+ * every fifteen minutes, whatever the number of runs.
  */
 import { hit } from './words';
 import { text } from './parse';
@@ -182,6 +184,9 @@ export function rankStories(feeds: { outlet: string; items: FeedItem[] }[], q: N
       const title = it.title.toLowerCase();
       const body = it.summary.toLowerCase();
       if (!q.names.some(n => hit(title, n) || hit(body, n))) continue;
+      // A question of several words needs two of them: "Israel" alone is in half the news, not in this question's.
+      const shared = q.words.filter(w => hit(title, w) || hit(body, w)).length;
+      if (shared < (q.words.length >= 3 ? 2 : 1)) continue;
       const score = q.words.reduce((s, w) => s + (hit(title, w) ? 3 : hit(body, w) ? 1 : 0), 0);
       if (score < 3) continue;
       const key = it.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().slice(0, 80);

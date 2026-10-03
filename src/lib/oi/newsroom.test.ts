@@ -58,8 +58,18 @@ describe('ranking the stories', () => {
         { title: 'Solana dips', url: 'https://decrypt.co/dip', published: '2026-10-01T00:00:00Z', summary: '' },
       ] },
     ], q, now);
-    expect(out.map(a => a.url)).toEqual(['https://www.coindesk.com/markets/solana-etf', 'https://decrypt.co/dip']);
+    // 'Solana dips' shares one of the three words: a passing mention.
+    expect(out.map(a => a.url)).toEqual(['https://www.coindesk.com/markets/solana-etf']);
     expect(out[0]).toMatchObject({ outlet: 'CoinDesk', domain: 'coindesk.com', summary: 'The SEC approved the first spot Solana funds on Friday.' });
+  });
+
+  it('asks a question of several words for two of them, so a passing mention is not enough', () => {
+    const q3 = { desks: [], tickers: [], words: ['israel', 'lebanon', 'invasion'], names: ['israel'] };
+    const out = rankStories([{ outlet: 'Al Jazeera', items: [
+      { title: 'Somalia rejects any Israeli presence', url: 'https://aj.example/1', published: '2026-10-02T00:00:00Z', summary: 'Israel denied the report.' },
+      { title: 'Israel masses troops on the Lebanon border', url: 'https://aj.example/2', published: '2026-10-02T00:00:00Z', summary: '' },
+    ] }], q3, now);
+    expect(out.map(a => a.url)).toEqual(['https://aj.example/2']);
   });
 
   it('credits a ticker newswire story to the outlet that wrote it', () => {
