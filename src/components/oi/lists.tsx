@@ -17,6 +17,7 @@ import { Avatar, Empty, Mentions, PointTag, STANCE, SectionTitle, Segmented, Sta
 import { ReportBody } from './report';
 import { PushTag, Quotes, SOURCE_KIND, SourceLink, sourceLabel } from './quotes';
 import { ANCHOR } from './anchors';
+import { PriceFan } from './fan';
 import { priceText } from '@/lib/oi/quant';
 
 export type Tab = 'report' | 'sim' | 'actors' | 'world' | 'ask';
@@ -94,6 +95,12 @@ export function SimFeed({ s, selected, onSelect }: { s: RunState; selected: stri
 
   return (
     <div className="flex flex-col gap-5">
+      {s.quant?.fan?.length ? (
+        <div className="rounded-lg border border-[var(--border-secondary)] bg-white/[0.015] px-3 pt-2.5 pb-2">
+          <SectionTitle>The price, world by world</SectionTitle>
+          <PriceFan s={s} />
+        </div>
+      ) : null}
       {s.worlds.length > 1 && (
         <div className="flex items-center gap-2.5">
           <span className={`${LABEL} text-[var(--text-muted)]`}>World</span>

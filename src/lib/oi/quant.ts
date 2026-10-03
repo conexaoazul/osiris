@@ -265,6 +265,37 @@ export function worldCourses(returns: number[], stepsPerPeriod: number[], worlds
   return qs.map(q => candidates[Math.min(pool - 1, Math.floor(q * pool))]);
 }
 
+/** Where the price may be at each date: the 10th, 50th and 90th percentile of the resampled paths. */
+export interface FanPoint { date: string; p10: number; p50: number; p90: number }
+
+/**
+ * The cone of what the market's own moves allow, date by date: from today's
+ * price through each of `dates`, the middle and the 80% band of the
+ * resampled paths. The worlds' courses are drawn inside it.
+ */
+export function fanOf(s: Series, today: string, dates: string[], count = 2000): FanPoint[] {
+  const stats = seriesStats(s);
+  if (!stats || !dates.length) return [];
+  const returns = demean(logReturns(s));
+  const marks = dates.map(d => tradingDays(daysBetween(today, d), stats.perYear));
+  const last = Math.max(...marks);
+  const at: number[][] = dates.map(() => []);
+  const draw = rng(seedOf(`${s.symbol}:fan`));
+  const n = returns.length;
+  for (let p = 0; p < count; p++) {
+    let x = 0, k = 0;
+    for (let d = 1; d <= last && n; d++) {
+      x += returns[Math.floor(draw() * n)];
+      while (k < marks.length && marks[k] === d) at[k++].push(Math.exp(x));
+    }
+    while (k < marks.length) at[k++].push(Math.exp(x));
+  }
+  return dates.map((date, i) => {
+    const xs = at[i].sort((a, b) => a - b);
+    return { date, p10: stats.price * quantile(xs, 0.1), p50: stats.price * quantile(xs, 0.5), p90: stats.price * quantile(xs, 0.9) };
+  });
+}
+
 /** What the worlds' events do to a price question once the market's randomness is integrated out. */
 export interface Priced {
   /** A level: the share of paths that meet it. */

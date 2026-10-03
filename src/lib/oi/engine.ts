@@ -38,7 +38,7 @@
  * draws the analysis while it happens.
  */
 import { roundStatFor } from './aggregate';
-import { baseline, chanceOf, demean, logReturns, priceText, pricedWorlds, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
+import { baseline, chanceOf, demean, fanOf, logReturns, priceText, pricedWorlds, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
 import { DEPTHS, PANEL_SEED_MAX, estimateCalls, type SeedScope } from './depths';
 import { gatherContext, onTopic, terms } from './context';
 import { simulationClock } from './clock';
@@ -202,7 +202,9 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   // A question about a price: its own history gives the outside view, which becomes the base rate (a level)
   // or the anchor (a value), and a line the actors and the report can quote.
   const measured = world.frame.measure ? series.find(x => x.symbol.toUpperCase() === world.frame.measure!.symbol.toUpperCase()) ?? null : null;
-  const quant: Quant | null = measured && world.frame.measure ? baseline(measured, world.frame.measure, today, horizon) : null;
+  const base = measured && world.frame.measure ? baseline(measured, world.frame.measure, today, horizon) : null;
+  // The cone the market's own moves allow, at the end of each period: the worlds' courses are drawn inside it.
+  const quant: Quant | null = base && measured ? { ...base, fan: fanOf(measured, today, periods.map(p => p.end)) } : null;
   if (quant) {
     if (world.frame.kind === 'binary' && quant.probability !== undefined) {
       world.frame = { ...world.frame, baseRate: Math.min(0.99, Math.max(0.01, quant.probability)), baseRateReason: `${quant.symbol}'s own price history: ${quant.method}` };

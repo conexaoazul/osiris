@@ -110,6 +110,8 @@ export interface Quant {
    * events applied (the push they gave the price), pooled across the worlds.
    */
   simulated?: { probability?: number; p10: number; p50: number; p90: number };
+  /** The cone of what the market's own moves allow, at the end of each simulated period. */
+  fan?: { date: string; p10: number; p50: number; p90: number }[];
 }
 
 /** What a prediction market prices a question at: real money on the outcome. */

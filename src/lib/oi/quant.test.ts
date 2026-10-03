@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baseline, chanceOf, demean, logReturns, pricedWorlds, resample, rng, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
+import { baseline, chanceOf, demean, fanOf, logReturns, pricedWorlds, resample, rng, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
 
 /** A year and a half of daily closes from a fixed walk: up 1%, down 1%, in a repeating pattern, every calendar day like a coin. */
 function walk(days: number, start = 100, moves = [0.01, -0.01, 0.02, -0.015, 0.005, -0.012]): Series {
@@ -125,6 +125,19 @@ describe('the simulation, priced', () => {
     // A push of 30% at the open of the first period meets a level 20% up at once.
     expect(pricedWorlds(m, 100, r, [30], [[1.3]], 5).probability).toBe(1);
     expect(pricedWorlds({ symbol: 'T' }, 100, r, [30], [[1]], 5).probability).toBeUndefined();
+  });
+});
+
+describe('the cone', () => {
+  it('widens with time around a middle that stays near today’s price', () => {
+    const s = walk(550);
+    const fan = fanOf(s, s.dates[549], ['2026-11-15', '2027-01-15', '2027-06-15']);
+    expect(fan.map(f => f.date)).toEqual(['2026-11-15', '2027-01-15', '2027-06-15']);
+    const width = fan.map(f => f.p90 - f.p10);
+    expect(width[1]).toBeGreaterThan(width[0]);
+    expect(width[2]).toBeGreaterThan(width[1]);
+    for (const f of fan) expect(Math.abs(f.p50 / s.closes[549] - 1)).toBeLessThan(0.1);
+    expect(fanOf(s, s.dates[549], [])).toEqual([]);
   });
 });
 

@@ -17,6 +17,7 @@ import type { RunState } from '@/lib/oi/state';
 import type { ContextItem } from '@/lib/oi/types';
 import { LABEL, T, pct, tint } from './theme';
 import { SectionTitle, TypeIcon } from './atoms';
+import { PriceFan } from './fan';
 
 /** The colours each anchor wears, the same everywhere it appears. */
 export const ANCHOR = { baseline: T.cyan, market: '#B388FF', simulation: T.gold, prediction: T.goldLight } as const;
@@ -94,6 +95,7 @@ export function Anchors({ s, selected, onSelect }: { s: RunState; selected: stri
           <span className="text-[9.5px] font-mono text-[var(--text-muted)] truncate">on {q.asOf} · swings {Math.round(q.vol * 100)}% a year{f.measure?.threshold !== undefined ? ` · level ${priceText(f.measure.threshold, q.currency)} (${f.measure.threshold >= q.price ? '+' : '−'}${Math.round(Math.abs(f.measure.threshold / q.price - 1) * 100)}%)` : ''}</span>
         </button>
       )}
+      {q?.fan?.length ? <div className="mb-3"><PriceFan s={s} /></div> : null}
       <div className="flex flex-col gap-2">
         {rows.map((row, i) => {
           const on = row.select && selected === row.select;
