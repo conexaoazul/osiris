@@ -91,12 +91,17 @@ export function planFallback(question: string): ResearchPlan {
   const names = namesIn(question);
   const words = terms(question).filter(t => !names.some(n => n.toLowerCase().includes(t))).sort((a, b) => b.length - a.length);
   const news = searchWords([...names, ...words].slice(0, 4).join(' '));
+  const instruments = tickersIn(question);
+  // Prediction markets title a price question by the asset, its price and the year ("What price will Solana hit in 2026?").
+  const year = /\b20\d{2}\b/.exec(question)?.[0];
+  const priced = instruments.length && names[0] ? `${names[0].split(' ')[0]} price${year ? ` ${year}` : ''}` : '';
+  const markets = [...new Set([priced, searchWords([...names, ...words].slice(0, 3).join(' '))].filter(q => q.length >= 3))];
   return {
     news: news ? [news] : [],
     background: names.slice(0, 2),
     desks: desksFor(question),
-    instruments: tickersIn(question),
-    markets: news ? [searchWords([...names, ...words].slice(0, 3).join(' '))] : [],
+    instruments,
+    markets,
   };
 }
 
@@ -115,6 +120,7 @@ export function parsePlan(raw: Record<string, unknown> | null, question: string)
     // The model's desks, and the ones the question's own words point to: a desk too many costs a feed read, one too few the story.
     desks: [...new Set([...desks, ...fallback.desks])].slice(0, 5),
     instruments: instruments.length ? instruments : fallback.instruments,
-    markets: markets.length ? markets : fallback.markets,
+    // The model's searches, and the question's own: a market search is cheap, and one phrasing finds what another misses.
+    markets: [...new Set([...markets, ...fallback.markets])].slice(0, 3),
   };
 }

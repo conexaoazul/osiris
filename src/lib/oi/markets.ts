@@ -154,11 +154,17 @@ export function parseManifold(body: string): MarketFind[] {
   }
 }
 
-const numbersIn = (s: string) => new Set((s.match(/\d+(?:[.,]\d+)?/g) ?? []).map(n => n.replace(/,/g, '')));
+/** The numbers in a text, as plain figures: "$150,000", "$150k" and "150K" are all 150000. */
+export const numbersIn = (s: string) => new Set([...s.matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?([kmb])?\b/gi)].map(m => {
+  const n = parseFloat(m[1].replace(/,/g, ''));
+  const mult = { k: 1e3, m: 1e6, b: 1e9 }[(m[2] ?? '').toLowerCase() as 'k' | 'm' | 'b'] ?? 1;
+  return String(n * mult);
+}));
 
 /**
- * The markets that ask (nearly) the question: those that share its words and
- * its numbers (the level, the year), the closest and most traded first. A
+ * The markets that ask (nearly) the question: those that share its words and,
+ * when it has any, at least one of its figures (the level, the year), the
+ * closest and most traded first. A
  * market priced at 0 or 1 has already settled and says nothing about what is
  * still open; one with next to no trading is no crowd.
  */
@@ -171,10 +177,12 @@ export function pickOdds(found: MarketFind[], question: string, words: string[],
       const low = m.question.toLowerCase();
       const shared = words.filter(w => hit(low, w)).length;
       const sameNumbers = [...numbersIn(m.question)].filter(n => nums.has(n)).length;
-      return { m, shared, score: shared + 2 * sameNumbers };
+      return { m, shared, sameNumbers, score: shared + 2 * sameNumbers };
     })
-    // Most of the question's words, and at least two of them: a market about something else is no crowd.
-    .filter(x => x.shared >= Math.min(2, words.length) && x.shared >= words.length / 3)
+    // The question's subject, and then two of its words or one of its figures: a market about something else is no crowd.
+    .filter(x => x.shared >= 1 && (x.shared >= Math.min(2, words.length) || x.sameNumbers >= 1))
+    // A question with figures in it (a level, a year) is about those figures: a market that shares none of them asks something else.
+    .filter(x => !nums.size || x.sameNumbers >= 1)
     .sort((a, b) => b.score - a.score || b.m.volume - a.m.volume)
     .filter(x => { const k = `${x.m.platform}:${x.m.question.toLowerCase()}`; if (seen.has(k)) return false; seen.add(k); return true; })
     .slice(0, max)

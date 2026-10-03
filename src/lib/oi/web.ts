@@ -426,7 +426,7 @@ export async function researchWeb(plan: ResearchPlan, question: string, limit: n
     plan.news[0] ? searchCurrentEvents(plan.news[0], terms(plan.news[0]), deps, signal) : Promise.resolve([]),
     Promise.all(plan.background.map(t => searchWikipedia(t, deps, signal))),
     Promise.all(plan.instruments.slice(0, 2).map(sym => fetchSeries(sym, deps.api, signal).catch(() => null))),
-    Promise.all(plan.markets.slice(0, 2).map(q => searchMarkets(q, deps.api, signal).catch(() => []))),
+    Promise.all(plan.markets.slice(0, 3).map(q => searchMarkets(q, deps.api, signal).catch(() => []))),
   ]);
 
   // Read a few more than are kept: some sites refuse, and those that answer come first.

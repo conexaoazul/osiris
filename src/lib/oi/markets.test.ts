@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchSeries, isSymbol, oddsLine, parseChart, parseManifold, parsePolymarket, pickOdds, type MarketFind } from './markets';
+import { fetchSeries, isSymbol, numbersIn, oddsLine, parseChart, parseManifold, parsePolymarket, pickOdds, type MarketFind } from './markets';
 import type { Fetcher } from './web';
 
 /** A chart reply for `n` days, with a live bar on the last day and a null close in the middle. */
@@ -80,6 +80,16 @@ describe('prediction markets', () => {
     expect(picked.map(m => m.question)).not.toContain('Will SOL hit $200 before 2027?');
     // About something else entirely: no crowd.
     expect(pickOdds(found, 'Will Israel invade Lebanon by 2028?', ['israel', 'invade', 'lebanon'])).toEqual([]);
+  });
+
+  it('reads figures however they are written, and drops markets that share none of the question’s', () => {
+    expect([...numbersIn('$150,000 or $150k or 150K by 2026')]).toEqual(['150000', '2026']);
+    expect([...numbersIn('a 2.5% cut')]).toEqual(['2.5']);
+    const found: MarketFind[] = [
+      { platform: 'Manifold', question: 'Will Bitcoin trade above $400k before it falls below $40k?', probability: 0.32, volume: 9000, closes: '', url: 'https://manifold.markets/a' },
+      { platform: 'Polymarket', question: 'Will Bitcoin reach $150k by December 31, 2026?', probability: 0.04, volume: 90000, closes: '', url: 'https://polymarket.com/event/b' },
+    ];
+    expect(pickOdds(found, 'Will Bitcoin trade above $150,000 before the end of 2026?', ['bitcoin', 'trade', 'above']).map(m => m.url)).toEqual(['https://polymarket.com/event/b']);
   });
 
   it('says a price as a line to quote', () => {

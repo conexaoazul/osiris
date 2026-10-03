@@ -71,7 +71,7 @@ Plan the research for this forecast.
 - "news": 2 news searches that would find the most recent reporting on what decides this question. Each is 2 to 4 keywords: names and key terms only, no punctuation or operators. Start each with the name the reporting would carry (the asset, the country, the person, the company).
 - "desks": the newsroom desks that cover it, 1 to 3 of: world, politics, business, markets, crypto, tech, energy, defense, health, science, climate, sports.
 - "instruments": if the question turns on a price that markets set every day (a coin, a share, an index, a commodity, a currency, a bond yield), its ticker as Yahoo Finance writes it, e.g. "BTC-USD", "SOL-USD", "NVDA", "^GSPC", "BZ=F", "GC=F", "EURUSD=X", "^TNX"; at most 2. Otherwise [].
-- "markets": 1 or 2 short searches (2 to 4 words) that would find prediction markets (Polymarket, Manifold) on this same question.
+- "markets": 1 or 2 short searches (2 to 4 words) that would find prediction markets (Polymarket, Manifold) on this same question, worded the way such markets are titled: for a price, the asset, "price" and the year ("Bitcoin price 2026"); otherwise the subject and the event ("Israel Lebanon invasion", "Fed December rates").
 - "background": 1 or 2 Wikipedia article titles that give the background or the base rate (the institution, the conflict, the market, the recurring event).
 
 JSON shape:

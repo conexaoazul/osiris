@@ -21,7 +21,8 @@ describe('the research plan', () => {
     }, 'Will Solana reach $200 by the end of 2026?');
     expect(plan.desks).toEqual(['crypto', 'markets']);
     expect(plan.instruments).toEqual(['SOL-USD', 'BTC-USD']);
-    expect(plan.markets).toEqual(['Solana 200 2026']);
+    // The model's search first, then the question's own phrasings: one finds what another misses.
+    expect(plan.markets).toEqual(['Solana 200 2026', 'Solana price 2026', 'Solana reach']);
   });
 
   it('finds the desks and the prices a question names when the model gives none', () => {
