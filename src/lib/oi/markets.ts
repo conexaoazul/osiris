@@ -279,14 +279,17 @@ export function parseTrending(body: string, now = Date.now()): Trending[] {
 const trendCache = memo<Trending[]>(10 * 60_000, 2);
 
 /** What the world is betting on now, kept ten minutes. */
-export async function trending(api: Fetcher, signal: AbortSignal): Promise<Trending[]> {
+export async function trending(api: Fetcher, signal: AbortSignal, now = Date.now()): Promise<Trending[]> {
   const kept = trendCache.get('top');
   if (kept) return kept;
-  const res = await api('https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume24hr&ascending=false&limit=100', {
+  // Only events that close two weeks out or later: the busiest hundred, whole,
+  // run to some 30 MB, most of it games and this week's bets.
+  const after = new Date(now + 14 * 86_400_000).toISOString();
+  const res = await api(`https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume24hr&ascending=false&limit=50&end_date_min=${after}`, {
     headers: { 'user-agent': BROWSER_UA, accept: 'application/json' },
     signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]),
   }).catch(() => null);
-  const items = res?.ok ? parseTrending(await res.text().catch(() => '')).slice(0, 8) : [];
+  const items = res?.ok ? parseTrending(await res.text().catch(() => ''), now).slice(0, 8) : [];
   if (items.length) trendCache.set('top', items);
   return items;
 }

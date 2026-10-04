@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchSeries, isSymbol, numbersIn, oddsLine, parseChart, parseManifold, parsePolymarket, parseTrending, pickOdds, type MarketFind } from './markets';
+import { fetchSeries, isSymbol, numbersIn, oddsLine, parseChart, parseManifold, parsePolymarket, parseTrending, pickOdds, trending, type MarketFind } from './markets';
 import type { Fetcher } from './web';
 
 /** A chart reply for `n` days, with a live bar on the last day and a null close in the middle. */
@@ -106,6 +106,14 @@ describe('prediction markets', () => {
       ['Putin out by December 31?', 0.025, 'https://polymarket.com/event/putin-out'],
     ]);
     expect(parseTrending('not json')).toEqual([]);
+  });
+
+  it('asks Polymarket only for the busiest events that close two weeks out or later', async () => {
+    const urls: string[] = [];
+    const api: Fetcher = async url => { urls.push(url); return new Response('[]'); };
+    expect(await trending(api, new AbortController().signal, Date.parse('2026-10-04T00:00:00Z'))).toEqual([]);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain('limit=50&end_date_min=2026-10-18T00:00:00.000Z');
   });
 
   it('says a price as a line to quote', () => {
