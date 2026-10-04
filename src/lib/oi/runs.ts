@@ -309,6 +309,9 @@ export function runSummary(run: Run, origin: string) {
       probability_pct: s.quant.probability !== undefined ? pct(s.quant.probability) : undefined,
       p10: s.quant.p10, p50: s.quant.p50, p90: s.quant.p90, method: s.quant.method,
       // How the method has done on this instrument's own past: forecasts from the year before each day, against what happened.
+      // The chance of trading at each level by the horizon, from the price's own history and, once run, the simulation.
+      curve: s.quant.curve?.map(c => ({ level: c.level, probability_pct: pct(c.probability) })),
+      simulated_curve: s.quant.simulated?.curve?.map(c => ({ level: c.level, probability_pct: pct(c.probability) })),
       record: s.quant.backtest ? { forecasts: s.quant.backtest.n, from: s.quant.backtest.from, to: s.quant.backtest.to, calibration_gap_pts: Math.round(s.quant.backtest.gap * 1000) / 10, brier: s.quant.backtest.brier, hindsight_brier: s.quant.backtest.reference, bins: s.quant.backtest.bins } : undefined,
       simulated: s.quant.simulated ? {
         probability_pct: s.quant.simulated.probability !== undefined ? pct(s.quant.simulated.probability) : undefined,
@@ -357,7 +360,13 @@ export function runSummary(run: Run, origin: string) {
     // What the actors and the report quoted: the ids in drivers' `sources` and moves' `quotes` point here.
     sources: s.context.map(c => ({
       id: c.id, kind: c.kind, title: c.title, source: c.source, url: c.url, excerpt: c.excerpt, place: c.place || undefined, published: c.published || undefined,
-      ...(c.odds ? { odds: { platform: c.odds.platform, probability_pct: pct(c.odds.probability), volume: c.odds.volume, closes: c.odds.closes || undefined } } : {}),
+      ...(c.odds ? {
+        odds: {
+          platform: c.odds.platform, probability_pct: pct(c.odds.probability), volume: c.odds.volume, closes: c.odds.closes || undefined,
+          // A rung of a price ladder: the crowd's price on every level.
+          ladder: c.odds.ladder?.map(r => ({ level: r.level, direction: r.direction, probability_pct: pct(r.probability) })),
+        },
+      } : {}),
       ...(c.symbol ? { symbol: c.symbol } : {}),
       quoted: s.links.filter(l => l.kind === 'cite' && l.to === `c:${c.id}`).length,
     })),

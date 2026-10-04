@@ -13,6 +13,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderId } from './providers';
 import { applyEvent, currentAnswer, currentProbability, initialState, type RunState } from './state';
 import { directionWord, formatAmount } from './forecast';
+import { ladderGaps, ladderSentence, readLadder } from './ladder';
+import { recordSentence } from './quant';
 import { questionBlock, trajectoryLine } from './prompts';
 import type { Citation, Depth, RunStatus, Stamped } from './types';
 import type { SeedScope } from './depths';
@@ -324,6 +326,12 @@ export function toMarkdown(s: RunState, url: string): string {
     }
     for (const c of s.context.filter(x => x.kind === 'odds' && x.odds)) {
       anchors.push(`- **${c.odds!.platform}${c.id === s.frame?.market ? ' (this question)' : ' (related)'}**: [${c.title.replace(/[[\]]/g, '')}](${c.url}) ${pct(c.odds!.probability)}`);
+    }
+    if (q?.backtest) anchors.push(`- **The baseline's record**: ${recordSentence(q.backtest, q.symbol, q.probability)}`);
+    const ladderOdds = (s.context.find(c => c.id === s.frame?.market) ?? s.context.find(c => c.odds?.ladder))?.odds;
+    if (q?.curve && ladderOdds?.ladder) {
+      const read = ladderSentence(readLadder(ladderGaps(q.curve, ladderOdds.ladder, q.price)), formatAmount, ladderOdds.platform);
+      if (read) anchors.push(`- **Every level**: ${read}`);
     }
     if (anchors.length) lines.push('', '## What it rests on', ...anchors);
     if (r.path.length) lines.push('', '## How it unfolds', ...r.path.map(p => `- **${p.date || 'Later'}**: ${p.title}${p.detail ? `. ${p.detail}` : ''}${p.actors.length ? ` (${p.actors.map(actorName).join(', ')})` : ''}`));
