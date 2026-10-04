@@ -243,6 +243,54 @@ export async function searchMarkets(q: string, api: Fetcher, signal: AbortSignal
   return found;
 }
 
+/** A question the world is betting on: a prediction market's most traded open question in a busy event. */
+export interface Trending { question: string; probability: number; event: string; url: string; volume: number; closes: string }
+
+/** Games and matches settle in hours: not questions to rehearse the future on. */
+const GAME_TAGS = /^(sports?|games?|esports|nfl|nba|mlb|nhl|ufc|soccer|football|tennis|golf|cfb|cbb|f1|mma|boxing|cricket|chess|league of legends|cs2|dota)/i;
+
+/**
+ * The questions busiest on Polymarket that OI can rehearse: events at least
+ * two weeks out and not games, each as its most traded open yes/no market
+ * still in play (priced between 2% and 98%).
+ */
+export function parseTrending(body: string, now = Date.now()): Trending[] {
+  try {
+    const events = JSON.parse(body) as unknown[];
+    const out: Trending[] = [];
+    for (const ev of Array.isArray(events) ? events : []) {
+      const e = ev as Record<string, unknown>;
+      const slug = typeof e.slug === 'string' && /^[a-z0-9-]+$/i.test(e.slug) ? e.slug : '';
+      const tags = (Array.isArray(e.tags) ? e.tags : []).map(t => String((t as Record<string, unknown>).label ?? ''));
+      const end = Date.parse(String(e.endDate ?? ''));
+      if (!slug || tags.some(t => GAME_TAGS.test(t)) || !(end > now + 14 * 86_400_000) || /up or down/i.test(String(e.title ?? ''))) continue;
+      const best = parsePolymarket(JSON.stringify({ events: [e] }))
+        .filter(m => m.probability >= 0.02 && m.probability <= 0.98)
+        .sort((a, b) => b.volume - a.volume)[0];
+      if (!best) continue;
+      out.push({ question: best.question, probability: best.probability, event: String(e.title ?? ''), url: best.url, volume: Number(e.volume24hr) || 0, closes: best.closes });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+const trendCache = memo<Trending[]>(10 * 60_000, 2);
+
+/** What the world is betting on now, kept ten minutes. */
+export async function trending(api: Fetcher, signal: AbortSignal): Promise<Trending[]> {
+  const kept = trendCache.get('top');
+  if (kept) return kept;
+  const res = await api('https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume24hr&ascending=false&limit=100', {
+    headers: { 'user-agent': BROWSER_UA, accept: 'application/json' },
+    signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]),
+  }).catch(() => null);
+  const items = res?.ok ? parseTrending(await res.text().catch(() => '')).slice(0, 8) : [];
+  if (items.length) trendCache.set('top', items);
+  return items;
+}
+
 /** A market's price as a line the actors and the report can quote. */
 export function oddsLine(m: Odds): string {
   const vol = m.volume >= 1e6 ? `${(m.volume / 1e6).toFixed(1)}M` : m.volume >= 1e3 ? `${Math.round(m.volume / 1e3)}K` : `${Math.round(m.volume)}`;

@@ -2,14 +2,14 @@
 /**
  * OSIRIS OI: choosing an engine (provider, key, model) and asking a question.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowRight, Check, ChevronDown, Database, Eye, EyeOff, FileText, KeyRound, Loader2, Upload, X } from 'lucide-react';
 import { PROVIDERS, providerInfo, type ProviderId } from '@/lib/oi/providers';
 import { DEPTHS, PANEL_SEED_MAX, SEED_MAX, estimateCalls, seedCost, type SeedScope } from '@/lib/oi/depths';
 import { checkKey, forgetKey, loadKey, saveEngine, saveKey, type Engine } from '@/lib/oi/client';
 import type { Depth, Frame } from '@/lib/oi/types';
-import { FIELD, KIND_SHORT, LABEL, T, gold, shortName } from './theme';
+import { ANCHOR, FIELD, KIND_SHORT, LABEL, T, gold, shortName } from './theme';
 import { OiMark, Overline, SectionTitle, Segmented, Switch, TextButton } from './atoms';
 import { ModelPicker } from './ModelPicker';
 
@@ -293,6 +293,16 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
   const [depth, setDepth] = useState<Depth>('standard');
   const [useFeeds, setUseFeeds] = useState(true);
   const [starting, setStarting] = useState(false);
+  // What the world is betting on: questions with the crowd's price on them, to run OI against.
+  const [trending, setTrending] = useState<{ question: string; probability: number; event: string; url: string }[]>([]);
+  useEffect(() => {
+    const ctl = new AbortController();
+    fetch('/api/oi/trending', { signal: ctl.signal })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (Array.isArray(j?.items)) setTrending(j.items); })
+      .catch(() => { /* suggestions are a nicety: none is fine */ });
+    return () => ctl.abort();
+  }, []);
   const valid = question.trim().length >= 8;
   const seed = assemble(files, paste);
   const dataCost = seedCost(seed.length, depth, scope);
@@ -332,6 +342,22 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
           placeholder="What do you want to know?" aria-label="Your question"
           className={`${FIELD} rounded-lg resize-none px-3 py-2.5 text-[12.5px] leading-relaxed`}
         />
+        {!question && trending.length > 0 && (
+          <div>
+            <span className={`block mb-1 ${LABEL} !text-[8px] text-[var(--text-muted)]`}>What the world is betting on</span>
+            <div className="flex flex-col divide-y divide-[var(--border-secondary)]">
+              {trending.slice(0, 4).map(x => (
+                <button key={x.url + x.question} onClick={() => setQuestion(x.question)} title={`${x.event}: Polymarket prices YES at ${Math.round(x.probability * 1000) / 10}%`}
+                  className="group flex items-center gap-2.5 py-1.5 text-left">
+                  <span className="w-[58px] flex-shrink-0 text-[10px] font-mono tabular-nums" style={{ color: ANCHOR.market }}>{Math.round(x.probability * 100)}%</span>
+                  <span className="flex-1 text-[11px] leading-snug truncate text-[var(--text-secondary)] transition-colors group-hover:text-[var(--text-primary)]">{x.question}</span>
+                  <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--gold-primary)]" />
+                </button>
+              ))}
+            </div>
+            <span className={`block mt-2 mb-1 ${LABEL} !text-[8px] text-[var(--text-muted)]`}>Or try</span>
+          </div>
+        )}
         {!question && (
           <div className="flex flex-col divide-y divide-[var(--border-secondary)]">
             {EXAMPLES.map(x => (

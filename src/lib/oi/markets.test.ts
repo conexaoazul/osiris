@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchSeries, isSymbol, numbersIn, oddsLine, parseChart, parseManifold, parsePolymarket, pickOdds, type MarketFind } from './markets';
+import { fetchSeries, isSymbol, numbersIn, oddsLine, parseChart, parseManifold, parsePolymarket, parseTrending, pickOdds, type MarketFind } from './markets';
 import type { Fetcher } from './web';
 
 /** A chart reply for `n` days, with a live bar on the last day and a null close in the middle. */
@@ -90,6 +90,22 @@ describe('prediction markets', () => {
       { platform: 'Polymarket', question: 'Will Bitcoin reach $150k by December 31, 2026?', probability: 0.04, volume: 90000, closes: '', url: 'https://polymarket.com/event/b' },
     ];
     expect(pickOdds(found, 'Will Bitcoin trade above $150,000 before the end of 2026?', ['bitcoin', 'trade', 'above']).map(m => m.url)).toEqual(['https://polymarket.com/event/b']);
+  });
+
+  it('suggests what the world is betting on: not games, not next week, the most traded open question of each event', () => {
+    const now = Date.parse('2026-10-04T00:00:00Z');
+    const yes = (question: string, p: number, volumeNum: number) => ({ question, outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([String(p), String(1 - p)]), volumeNum, active: true, closed: false });
+    const body = JSON.stringify([
+      { slug: 'patriots-vs-bills', title: 'Patriots vs. Bills', endDate: '2026-10-05T00:00:00Z', tags: [{ label: 'Sports' }], volume24hr: 9e6, markets: [yes('Will the Patriots win?', 0.5, 1e6)] },
+      { slug: 'fed-october', title: 'Fed Decision in October?', endDate: '2026-10-29T00:00:00Z', tags: [{ label: 'Economy' }], volume24hr: 4e5, markets: [yes('Will the Fed cut by 25 bps?', 0.15, 2e5), yes('Will there be no change?', 0.82, 9e5)] },
+      { slug: 'soon', title: 'Ends this week', endDate: '2026-10-08T00:00:00Z', tags: [{ label: 'Politics' }], volume24hr: 3e5, markets: [yes('Soon?', 0.4, 1e5)] },
+      { slug: 'putin-out', title: 'Putin out by...?', endDate: '2026-12-31T00:00:00Z', tags: [{ label: 'Geopolitics' }], volume24hr: 3e5, markets: [yes('Putin out by December 31?', 0.025, 4e5), yes('Putin out by October 31?', 0.004, 9e5)] },
+    ]);
+    expect(parseTrending(body, now).map(t => [t.question, t.probability, t.url])).toEqual([
+      ['Will there be no change?', 0.82, 'https://polymarket.com/event/fed-october'],
+      ['Putin out by December 31?', 0.025, 'https://polymarket.com/event/putin-out'],
+    ]);
+    expect(parseTrending('not json')).toEqual([]);
   });
 
   it('says a price as a line to quote', () => {
