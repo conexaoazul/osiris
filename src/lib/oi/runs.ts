@@ -308,6 +308,8 @@ export function runSummary(run: Run, origin: string) {
       symbol: s.quant.symbol, price: s.quant.price, as_of: s.quant.asOf, volatility_pct: pct(s.quant.vol), horizon_days: s.quant.days,
       probability_pct: s.quant.probability !== undefined ? pct(s.quant.probability) : undefined,
       p10: s.quant.p10, p50: s.quant.p50, p90: s.quant.p90, method: s.quant.method,
+      // How the method has done on this instrument's own past: forecasts from the year before each day, against what happened.
+      record: s.quant.backtest ? { forecasts: s.quant.backtest.n, from: s.quant.backtest.from, to: s.quant.backtest.to, calibration_gap_pts: Math.round(s.quant.backtest.gap * 1000) / 10, brier: s.quant.backtest.brier, hindsight_brier: s.quant.backtest.reference, bins: s.quant.backtest.bins } : undefined,
       simulated: s.quant.simulated ? {
         probability_pct: s.quant.simulated.probability !== undefined ? pct(s.quant.simulated.probability) : undefined,
         p10: s.quant.simulated.p10, p50: s.quant.simulated.p50, p90: s.quant.simulated.p90,

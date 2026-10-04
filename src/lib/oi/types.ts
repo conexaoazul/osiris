@@ -112,6 +112,15 @@ export interface Quant {
   simulated?: { probability?: number; p10: number; p50: number; p90: number; curve?: { level: number; probability: number }[] };
   /** The chance the price trades at each level (touches it) before the horizon: a touch curve to set beside a market's ladder. */
   curve?: { level: number; probability: number }[];
+  /**
+   * The baseline scored on the instrument's own past: forecasts made on past
+   * days from the year of prices before each, against what happened.
+   */
+  backtest?: {
+    n: number; starts: number; from: string; to: string; days: number;
+    brier: number; reference: number; skill: number; gap: number;
+    bins: { lo: number; hi: number; said: number; happened: number; n: number }[];
+  };
   /** The cone of what the market's own moves allow, at the end of each simulated period. */
   fan?: { date: string; p10: number; p50: number; p90: number }[];
 }

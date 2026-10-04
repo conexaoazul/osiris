@@ -27,7 +27,7 @@ import { text } from './parse';
 import { namesIn, type ResearchPlan } from './plan';
 import { fetchSeries, ladderOf, oddsLine, pickOdds, searchMarkets } from './markets';
 import { searchNewsroom } from './newsroom';
-import { priceText, seriesStats, type Series } from './quant';
+import { priceText, recent, seriesStats, type Series } from './quant';
 import type { ContextItem } from './types';
 
 export { parsePlan, planFallback, searchWords, type ResearchPlan } from './plan';
@@ -385,7 +385,7 @@ const pctText = (x: number | null) => (x === null ? 'n/a' : `${x >= 0 ? '+' : 'â
 
 /** A price history as a source the actors can quote: where it stands, its year, its moves, its swings. */
 export function seriesItem(s: Series, id: string): ContextItem | null {
-  const st = seriesStats(s);
+  const st = seriesStats(recent(s));
   if (!st) return null;
   const p = (n: number) => priceText(n, s.currency);
   return {

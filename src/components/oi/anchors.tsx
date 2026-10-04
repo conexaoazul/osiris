@@ -19,6 +19,7 @@ import { ANCHOR, LABEL, T, pct, tint } from './theme';
 import { SectionTitle, TypeIcon } from './atoms';
 import { PriceFan } from './fan';
 import { LadderChart } from './ladder';
+import { TrackRecord } from './record';
 
 
 interface Row {
@@ -102,13 +103,6 @@ export function Anchors({ s, selected, onSelect }: { s: RunState; selected: stri
           <span className="text-[9.5px] font-mono text-[var(--text-muted)] truncate">on {q.asOf} · swings {Math.round(q.vol * 100)}% a year{f.measure?.threshold !== undefined ? ` · level ${priceText(f.measure.threshold, q.currency)} (${f.measure.threshold >= q.price ? '+' : '−'}${Math.round(Math.abs(f.measure.threshold / q.price - 1) * 100)}%)` : ''}</span>
         </button>
       )}
-      {q?.fan?.length ? <div className="mb-3"><PriceFan s={s} /></div> : null}
-      {q?.curve?.length && s.context.some(c => c.odds?.ladder) ? (
-        <div className="mb-3">
-          <span className={`block mb-1.5 ${LABEL} !text-[8px] text-[var(--text-muted)]`}>Every level, the model and the crowd</span>
-          <LadderChart s={s} />
-        </div>
-      ) : null}
       <div className="flex flex-col gap-2">
         {rows.map((row, i) => {
           const on = row.select && selected === row.select;
@@ -155,6 +149,25 @@ export function Anchors({ s, selected, onSelect }: { s: RunState; selected: stri
           }).join(' · ')}
         </p>
       )}
+      {/* The figures above, then what they come from: the price world by world, the whole ladder, the baseline's record. */}
+      {q?.fan?.length ? (
+        <div className="mt-4">
+          <span className={`block mb-1.5 ${LABEL} !text-[8px] text-[var(--text-muted)]`}>The price, world by world</span>
+          <PriceFan s={s} />
+        </div>
+      ) : null}
+      {q?.curve?.length && s.context.some(c => c.odds?.ladder) ? (
+        <div className="mt-4">
+          <span className={`block mb-1.5 ${LABEL} !text-[8px] text-[var(--text-muted)]`}>Every level, the model and the crowd</span>
+          <LadderChart s={s} />
+        </div>
+      ) : null}
+      {q?.backtest ? (
+        <div className="mt-4">
+          <span className={`block mb-1.5 ${LABEL} !text-[8px] text-[var(--text-muted)]`}>Is the baseline any good? Its record on {q.symbol}&apos;s past</span>
+          <TrackRecord s={s} />
+        </div>
+      ) : null}
     </div>
   );
 }

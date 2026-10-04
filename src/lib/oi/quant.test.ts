@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baseline, chanceOf, demean, fanOf, logReturns, pricedWorlds, resample, rng, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
+import { backtest, baseline, chanceOf, demean, fanOf, logReturns, pricedWorlds, recordSentence, resample, rng, seedOf, seriesStats, tradingDays, worldCourses, type Series } from './quant';
 
 /** A year and a half of daily closes from a fixed walk: up 1%, down 1%, in a repeating pattern, every calendar day like a coin. */
 function walk(days: number, start = 100, moves = [0.01, -0.01, 0.02, -0.015, 0.005, -0.012]): Series {
@@ -125,6 +125,29 @@ describe('the simulation, priced', () => {
     // A push of 30% at the open of the first period meets a level 20% up at once.
     expect(pricedWorlds(m, 100, r, [30], [[1.3]], 5).probability).toBe(1);
     expect(pricedWorlds({ symbol: 'T' }, 100, r, [30], [[1]], 5).probability).toBeUndefined();
+  });
+});
+
+describe('the baseline’s record', () => {
+  it('scores forecasts made on past days against what then happened, in bands of what it said', () => {
+    const s = walk(900);
+    const b = backtest(s, 60)!;
+    expect(b.starts).toBeGreaterThan(30);
+    expect(b.n).toBe(b.starts * 11);
+    expect(b.bins.reduce((t, x) => t + x.n, 0)).toBe(b.n);
+    for (const x of b.bins) {
+      expect(x.said).toBeGreaterThanOrEqual(x.lo - 1e-9);
+      expect(x.said).toBeLessThanOrEqual(x.hi + 1e-9);
+      expect(x.happened).toBeGreaterThanOrEqual(0);
+      expect(x.happened).toBeLessThanOrEqual(1);
+    }
+    expect(b.gap).toBeGreaterThanOrEqual(0);
+    expect(b.brier).toBeGreaterThan(0);
+    expect(b.from < b.to).toBe(true);
+    // Each forecast is made from the year before its day, so the first is a year in.
+    expect(Date.parse(b.from) - Date.parse(s.dates[0])).toBeGreaterThanOrEqual(364 * 86_400_000);
+    expect(recordSentence(b, 'TST-USD', 0.15)).toMatch(/^Tested on [\d,]+ past forecasts of TST-USD .* points from what happened, on average\./);
+    expect(backtest(walk(300), 60)).toBeNull();
   });
 });
 

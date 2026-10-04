@@ -17,7 +17,7 @@
  * models have no tools, so the most a hostile headline can do is argue.
  */
 import { formatAmount } from './forecast';
-import { priceText } from './quant';
+import { priceText, recordSentence } from './quant';
 import { ladderGaps, ladderSentence, readLadder } from './ladder';
 import { DATA_ID, evidenceLedger, type LedgerRow } from './sources';
 import type { Actor, ContextItem, Frame, Link, Move, Period, Quant, Report, RoundStat, SimEvent, WorldPoint } from './types';
@@ -451,6 +451,8 @@ export function anchorsBlock(frame: Frame, quant: Quant | null, odds: ContextIte
   if (quant) {
     const range = `80% of paths end between ${priceText(quant.p10, quant.currency)} and ${priceText(quant.p90, quant.currency)}, the middle at ${priceText(quant.p50, quant.currency)}`;
     lines.push(`- Statistical baseline (${quant.symbol}'s own price history, no view on events)${quant.probability !== undefined && frame.kind === 'binary' ? `: ${pct(quant.probability)} YES` : ''}. ${range}. ${quant.method}`);
+    // How far the baseline can be trusted on this instrument: its record on the instrument's own past.
+    if (quant.backtest) lines.push(`- The baseline's record: ${recordSentence(quant.backtest, quant.symbol, quant.probability)}`);
     // The crowd's whole ladder beside the model's curve: where each sees more upside or downside.
     const ladder = (odds.find(o => o.id === frame.market) ?? odds.find(o => o.odds?.ladder))?.odds;
     if (quant.curve && ladder?.ladder) {

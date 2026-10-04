@@ -77,13 +77,13 @@ export function parseChart(body: string): Series | null {
 
 const seriesCache = memo<Series | null>(30 * 60_000);
 
-/** Two years of daily prices for a ticker, or null when Yahoo does not know it. */
+/** Five years of daily prices for a ticker (the baseline reads the last two, the backtest all of them), or null when Yahoo does not know it. */
 export async function fetchSeries(symbol: string, api: Fetcher, signal: AbortSignal): Promise<Series | null> {
   if (!isSymbol(symbol)) return null;
   const key = symbol.toUpperCase();
   const kept = seriesCache.get(key);
   if (kept !== undefined) return kept;
-  const res = await api(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2y&interval=1d&includeAdjustedClose=true`, {
+  const res = await api(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=1d&includeAdjustedClose=true`, {
     headers: { 'user-agent': BROWSER_UA, accept: 'application/json' },
     signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
   }).catch(() => null);
