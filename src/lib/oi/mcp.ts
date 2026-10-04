@@ -47,7 +47,7 @@ export const ERR = { parse: -32700, invalidRequest: -32600, methodNotFound: -326
 const INSTRUCTIONS = `OSIRIS OI is a prediction engine for real-world questions: it researches the question from sources that can be checked (reporting from publishers' own feeds, GDELT and Wikipedia's Current events, each with its link; daily prices for any market price the question turns on; what prediction markets such as Polymarket price the same question at; background; and OSIRIS's live feeds where on topic), casts the actors who decide it as agents, and simulates them acting on each other over dated periods from today to the horizon, in several parallel worlds. A question about a price is priced: a statistical baseline from the price's own history, each world's own course for the price, and the worlds' events run through the market's own paths.
 Use oi_predict to predict a question; it returns the probability the worlds add up to, in the shape the question asks for (a probability for yes or no, a share per outcome for "which", an estimate with an 80% range for "how much"), and the story: the predicted path date by date, what each actor does, how each world ended, drivers, scenarios and signposts, what the prediction rests on (the baseline, the prediction market on the same question), and a watch_url where a human can watch the analysis draw itself on the globe. A run takes one to five minutes: if oi_predict returns before the run is done, call oi_get_run with wait_seconds until status is "done".
 oi_ask questions the report agent, or any actor that played, afterwards. oi_inject drops a breaking event into a running simulation (god's-eye view): it lands in every world.
-osiris_world_brief and osiris_markets are free and need no model key. OI tools run on the model key configured on this connection.
+osiris_world_brief, osiris_markets and osiris_trending (what the world is betting on: questions with the crowd's price, to predict and compare) are free and need no model key. OI tools run on the model key configured on this connection.
 ${CREDIT}`;
 
 const RUN_ID = { type: 'string', description: 'The run id returned by oi_predict.' };
@@ -164,6 +164,13 @@ export const TOOLS = [
       },
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: 'osiris_trending',
+    title: 'What the world is betting on',
+    description: 'The busiest open questions on Polymarket that can be predicted (not games, at least two weeks out), each with the crowd\'s price of YES: questions to run oi_predict on and compare with the crowd. Free; no model key needed.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
 ] as const;
@@ -319,6 +326,12 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
         .filter(q => group === 'all' || q.group === group)
         .map(q => ({ name: q.name, symbol: q.symbol, group: q.group, price: q.price, change_pct: Math.round(q.change_percent * 100) / 100, currency: q.currency, market_open: q.market_open }));
       return ok(`${quotes.length} instruments.`, { group, quotes, as_of: new Date().toISOString() });
+    }
+    case 'osiris_trending': {
+      const { trending } = await import('./markets');
+      const items = (await trending((url, init) => fetch(url, init), ctx.signal))
+        .map(t => ({ question: t.question, crowd_pct: Math.round(t.probability * 1000) / 10, event: t.event, url: t.url, closes: t.closes || undefined }));
+      return ok(`${items.length} questions the world is betting on.`, { items, source: 'Polymarket', as_of: new Date().toISOString() });
     }
   }
   throw Object.assign(new Error(`Unknown tool: ${name}`), { rpc: ERR.invalidParams });

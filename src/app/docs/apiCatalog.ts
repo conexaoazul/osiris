@@ -650,6 +650,12 @@ export const API_GROUPS: ApiGroup[] = [
         notes: 'Each event is `id: <seq>` and `data: <json>`, with a `t` field naming its type. The stream replays from the start, follows live, and closes after `end`. Reconnect with `Last-Event-ID` (or `?after=<seq>`) to resume.',
       },
       {
+        path: '/api/oi/trending',
+        method: 'GET',
+        summary: 'What the world is betting on: the busiest open questions on Polymarket that can be predicted (not games, at least two weeks out), each with the crowd’s price of YES. No key; kept ten minutes.',
+        returns: ['items[].question', 'items[].probability', 'items[].event', 'items[].url', 'items[].closes'],
+      },
+      {
         path: '/api/oi/assist',
         method: 'POST',
         summary: "One step of an OI Assist conversation: send the conversation and what is on the map; get back what OI says and the actions it wants taken (go_to, layers, find, highlight, show, markets, open, map_view, forecast, clear).",
@@ -701,7 +707,7 @@ export const API_GROUPS: ApiGroup[] = [
         summary: 'OI and live OSIRIS intelligence as an MCP server (Streamable HTTP, stateless) for agents such as Hermes, Claude and Cursor.',
         returns: ['jsonrpc', 'id', 'result'],
         headers: { Accept: 'application/json, text/event-stream', 'X-OI-Provider': 'openai', 'X-OI-Key': '$YOUR_MODEL_KEY' },
-        notes: 'Tools: `oi_predict`, `oi_get_run`, `oi_ask`, `oi_inject`, `oi_cancel`, `oi_info`, and the free `osiris_world_brief` and `osiris_markets`, which need no key. A call that waits on a forecast streams progress notifications when the client accepts SSE. Protocol versions 2025-06-18, 2025-03-26 and 2024-11-05.',
+        notes: 'Tools: `oi_predict`, `oi_get_run`, `oi_ask`, `oi_inject`, `oi_cancel`, `oi_info`, and the free `osiris_world_brief`, `osiris_markets` and `osiris_trending`, which need no key. A call that waits on a forecast streams progress notifications when the client accepts SSE. Protocol versions 2025-06-18, 2025-03-26 and 2024-11-05.',
         bodyExample: `{
   "jsonrpc": "2.0",
   "id": 1,
