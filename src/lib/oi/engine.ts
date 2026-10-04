@@ -202,7 +202,9 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   // A question about a price: its own history gives the outside view, which becomes the base rate (a level)
   // or the anchor (a value), and a line the actors and the report can quote.
   const measured = world.frame.measure ? series.find(x => x.symbol.toUpperCase() === world.frame.measure!.symbol.toUpperCase()) ?? null : null;
-  const base = measured && world.frame.measure ? baseline(measured, world.frame.measure, today, horizon) : null;
+  // The levels a prediction market's ladder asks about, so the touch curve can stand beside it rung by rung.
+  const ladder = context.find(c => c.id === world.frame.market)?.odds?.ladder ?? context.find(c => c.odds?.ladder)?.odds?.ladder ?? [];
+  const base = measured && world.frame.measure ? baseline(measured, world.frame.measure, today, horizon, ladder.map(r => r.level)) : null;
   // The cone the market's own moves allow, at the end of each period: the worlds' courses are drawn inside it.
   const quant: Quant | null = base && measured ? { ...base, fan: fanOf(measured, today, periods.map(p => p.end)) } : null;
   if (quant) {
@@ -428,7 +430,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   const lastStat = stats[stats.length - 1];
   // A price question: the worlds' events run through the market's own paths, so a handful of worlds reads as a probability.
   const priced = pricing && quant
-    ? pricedWorlds(pricing.measure, pricing.start, pricing.returns, pricing.steps, worlds.map(w => periods.map((_, i) => pushLog.get(w)?.[i] ?? 1)), seedOf(`${pricing.symbol}:${horizon}:priced`))
+    ? pricedWorlds(pricing.measure, pricing.start, pricing.returns, pricing.steps, worlds.map(w => periods.map((_, i) => pushLog.get(w)?.[i] ?? 1)), seedOf(`${pricing.symbol}:${horizon}:priced`), 2000, quant.curve?.map(c => c.level) ?? [])
     : null;
   const finalQuant = quant && priced ? { ...quant, simulated: priced } : quant;
   if (finalQuant && priced) s.emit({ t: 'quant', quant: finalQuant });

@@ -28,6 +28,9 @@ export const T = {
   neutral: 'var(--map-oi-neutral, #8c7cff)',
 };
 
+/** The colours each anchor of a prediction wears (the baseline, the crowd, the simulation, the prediction), the same everywhere it appears. */
+export const ANCHOR = { baseline: T.cyan, market: '#B388FF', simulation: T.gold, prediction: T.goldLight } as const;
+
 export const gold = (a: number) => `rgba(var(--gold-rgb),${a})`;
 export const cyan = (a: number) => `rgba(var(--cyan-rgb),${a})`;
 export const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;

@@ -15,12 +15,11 @@ import { formatAmount } from '@/lib/oi/forecast';
 import { priceText } from '@/lib/oi/quant';
 import type { RunState } from '@/lib/oi/state';
 import type { ContextItem } from '@/lib/oi/types';
-import { LABEL, T, pct, tint } from './theme';
+import { ANCHOR, LABEL, T, pct, tint } from './theme';
 import { SectionTitle, TypeIcon } from './atoms';
 import { PriceFan } from './fan';
+import { LadderChart } from './ladder';
 
-/** The colours each anchor wears, the same everywhere it appears. */
-export const ANCHOR = { baseline: T.cyan, market: '#B388FF', simulation: T.gold, prediction: T.goldLight } as const;
 
 interface Row {
   key: string;
@@ -77,7 +76,9 @@ export function Anchors({ s, selected, onSelect }: { s: RunState; selected: stri
       });
     }
     // A "which" question is priced one outcome at a time: each market stands beside the prediction, not behind it.
-    for (const m of related.slice(0, f.kind === 'choice' ? 4 : 3)) {
+    // Rungs of the same ladder are on the ladder chart; the rows keep the markets it does not show.
+    const onLadder = (m: ContextItem) => Boolean(same?.odds?.ladder && m.url === same.url);
+    for (const m of related.filter(m => !onLadder(m)).slice(0, f.kind === 'choice' ? 4 : 3)) {
       if (m.odds) rows.push({ key: m.id, label: f.kind === 'choice' ? `${m.odds.platform} traders` : 'Related market', detail: `“${m.title}”`, color: ANCHOR.market, value: m.odds.probability, select: `c:${m.id}`, muted: f.kind !== 'choice' });
     }
   }
@@ -102,6 +103,12 @@ export function Anchors({ s, selected, onSelect }: { s: RunState; selected: stri
         </button>
       )}
       {q?.fan?.length ? <div className="mb-3"><PriceFan s={s} /></div> : null}
+      {q?.curve?.length && s.context.some(c => c.odds?.ladder) ? (
+        <div className="mb-3">
+          <span className={`block mb-1.5 ${LABEL} !text-[8px] text-[var(--text-muted)]`}>Every level, the model and the crowd</span>
+          <LadderChart s={s} />
+        </div>
+      ) : null}
       <div className="flex flex-col gap-2">
         {rows.map((row, i) => {
           const on = row.select && selected === row.select;

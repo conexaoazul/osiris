@@ -189,6 +189,39 @@ export function pickOdds(found: MarketFind[], question: string, words: string[],
     .map(x => x.m);
 }
 
+/** A rung of a price ladder: the chance the crowd gives the price of trading at a level by the deadline. */
+export interface Rung { level: number; direction: 'above' | 'below'; probability: number }
+
+/** The price level a market asks about, and which way: "reach $200" is above, "dip to $50" below. Null when it names none. */
+export function levelOf(question: string): { level: number; direction: 'above' | 'below' } | null {
+  const m = /\$\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?([kmb])?\b/i.exec(question);
+  if (!m) return null;
+  const level = parseFloat(m[1].replace(/,/g, '')) * ({ k: 1e3, m: 1e6, b: 1e9 }[(m[2] ?? '').toLowerCase() as 'k' | 'm' | 'b'] ?? 1);
+  if (!(level > 0)) return null;
+  return { level, direction: /\b(dip|dips|fall|falls|drop|drops|below|under|crash|crashes|sink|sinks)\b/i.test(question) ? 'below' : 'above' };
+}
+
+/**
+ * The ladder a market belongs to: the open markets in the same event, on the
+ * same platform and deadline, that each ask about a level ("What price will
+ * Solana hit in 2026?" asks it rung by rung, up and down). One price per
+ * level and direction, the most traded; none unless there are three rungs.
+ */
+export function ladderOf(m: MarketFind, found: MarketFind[]): Rung[] {
+  const day = m.closes.slice(0, 10);
+  const best = new Map<string, MarketFind & { level: number; direction: 'above' | 'below' }>();
+  for (const x of found) {
+    if (x.platform !== m.platform || x.url !== m.url || x.closes.slice(0, 10) !== day) continue;
+    const l = levelOf(x.question);
+    if (!l) continue;
+    const key = `${l.direction}:${l.level}`;
+    const had = best.get(key);
+    if (!had || x.volume > had.volume) best.set(key, { ...x, ...l });
+  }
+  const rungs = [...best.values()].map(x => ({ level: x.level, direction: x.direction, probability: x.probability })).sort((a, b) => a.level - b.level);
+  return rungs.length >= 3 ? rungs : [];
+}
+
 const oddsCache = memo<MarketFind[]>(15 * 60_000);
 
 /** The open markets either platform finds for a search. */

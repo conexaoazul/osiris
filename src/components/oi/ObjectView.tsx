@@ -19,13 +19,12 @@ import { LINK_LABEL, TYPE_LABEL } from '@/lib/oi/objects';
 import { moveFor, nodeName, relatedLinks, type Selection } from '@/lib/oi/research';
 import { worldName, type RunState } from '@/lib/oi/state';
 import type { Link, Move } from '@/lib/oi/types';
-import { LABEL, T, ago, gold, leanTo, pct, tint, toneColor } from './theme';
+import { ANCHOR, LABEL, T, ago, gold, leanTo, pct, tint, toneColor } from './theme';
 import { Avatar, IconButton, Mentions, Overline, PointTag, STANCE, StanceTag, TypeIcon, accentFor } from './atoms';
 import { EventRow, LineGlyph, MoveRow, periodReached } from './lists';
 import { PushTag, Quotes, SOURCE_KIND, SourceLink, Verbatim, sourceLabel } from './quotes';
 import { evidenceLedger } from '@/lib/oi/sources';
 import { priceText } from '@/lib/oi/quant';
-import { ANCHOR } from './anchors';
 
 export interface ObjectViewProps {
   s: RunState;

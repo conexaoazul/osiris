@@ -12,11 +12,10 @@ import { castOf, worldName, type RunState } from '@/lib/oi/state';
 import { formatAmount, leader } from '@/lib/oi/forecast';
 import { nodeName } from '@/lib/oi/research';
 import type { Actor, ContextItem, Link, Move, Period, RoundStat, SimEvent } from '@/lib/oi/types';
-import { FIELD, LABEL, T, ago, cyan, gold, pct, toneColor } from './theme';
+import { ANCHOR, FIELD, LABEL, T, ago, cyan, gold, pct, toneColor } from './theme';
 import { Avatar, Empty, Mentions, PointTag, STANCE, SectionTitle, Segmented, StanceTag, TypeIcon } from './atoms';
 import { ReportBody } from './report';
 import { PushTag, Quotes, SOURCE_KIND, SourceLink, sourceLabel } from './quotes';
-import { ANCHOR } from './anchors';
 import { PriceFan } from './fan';
 import { priceText } from '@/lib/oi/quant';
 

@@ -25,7 +25,7 @@ import { safeFetch } from '@/lib/ssrf-guard';
 import { terms } from './words';
 import { text } from './parse';
 import { namesIn, type ResearchPlan } from './plan';
-import { fetchSeries, oddsLine, pickOdds, searchMarkets } from './markets';
+import { fetchSeries, ladderOf, oddsLine, pickOdds, searchMarkets } from './markets';
 import { searchNewsroom } from './newsroom';
 import { priceText, seriesStats, type Series } from './quant';
 import type { ContextItem } from './types';
@@ -455,9 +455,12 @@ export async function researchWeb(plan: ResearchPlan, question: string, limit: n
     const item = seriesItem(sr, `q${items.filter(c => c.kind === 'series').length + 1}`);
     if (item) items.push(item);
   }
-  pickOdds(markets.flat(), question, terms(question)).forEach((m, i) => {
+  const allMarkets = markets.flat();
+  pickOdds(allMarkets, question, terms(question)).forEach((m, i) => {
     const { url, ...odds } = m;
-    items.push({ id: `m${i + 1}`, kind: 'odds', title: m.question, source: m.platform, published: '', place: '', lat: null, lng: null, url, excerpt: oddsLine(m), odds });
+    // A rung of a price ladder brings the whole ladder: the crowd's price on every level.
+    const ladder = ladderOf(m, allMarkets);
+    items.push({ id: `m${i + 1}`, kind: 'odds', title: m.question, source: m.platform, published: '', place: '', lat: null, lng: null, url, excerpt: oddsLine(m), odds: ladder.length ? { ...odds, ladder } : odds });
   });
   const seen = new Set<string>();
   for (const b of background) {

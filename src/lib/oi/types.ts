@@ -109,7 +109,9 @@ export interface Quant {
    * Once the simulation has run: the same market paths with each world's
    * events applied (the push they gave the price), pooled across the worlds.
    */
-  simulated?: { probability?: number; p10: number; p50: number; p90: number };
+  simulated?: { probability?: number; p10: number; p50: number; p90: number; curve?: { level: number; probability: number }[] };
+  /** The chance the price trades at each level (touches it) before the horizon: a touch curve to set beside a market's ladder. */
+  curve?: { level: number; probability: number }[];
   /** The cone of what the market's own moves allow, at the end of each simulated period. */
   fan?: { date: string; p10: number; p50: number; p90: number }[];
 }
@@ -125,6 +127,11 @@ export interface Odds {
   volume: number;
   /** When the market closes, ISO, or ''. */
   closes: string;
+  /**
+   * When the market is one rung of a price ladder (an event that asks about
+   * level after level, up and down), the whole ladder: each level's price.
+   */
+  ladder?: { level: number; direction: 'above' | 'below'; probability: number }[];
 }
 
 /**

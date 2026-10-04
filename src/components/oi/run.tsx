@@ -9,9 +9,8 @@ import { Camera, Check, Crosshair, Square, Zap } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
 import { currentAnswer, latestPoints, type RunState } from '@/lib/oi/state';
 import { formatAmount, leader, outcomeColor, positionIn } from '@/lib/oi/forecast';
-import { KIND_LABEL, LABEL, T, fit, gold, pct, smooth } from './theme';
+import { ANCHOR, KIND_LABEL, LABEL, T, fit, gold, pct, smooth } from './theme';
 import { Overline, PointTag, TextButton } from './atoms';
-import { ANCHOR } from './anchors';
 
 const PHASES: { id: RunState['phase']; label: string }[] = [
   { id: 'context', label: 'Research' },

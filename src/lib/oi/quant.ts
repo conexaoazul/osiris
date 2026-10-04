@@ -184,6 +184,30 @@ export function chanceOf(m: Measure, price: number, returns: number[], steps: nu
 
 const PATHS = 4000;
 
+/** The chance the price trades at a level (touches it) before the horizon. */
+export interface CurvePoint { level: number; probability: number }
+
+/** Levels to draw a touch curve at: a geometric grid from a quarter of the price to four times it, and any levels asked for. */
+export function curveLevels(price: number, extra: number[] = [], points = 49): number[] {
+  const grid = Array.from({ length: points }, (_, i) => (price * Math.pow(16, i / (points - 1))) / 4);
+  return [...new Set([...grid, ...extra.filter(l => l > 0 && Number.isFinite(l))].map(l => +l.toPrecision(6)))].sort((a, b) => a - b);
+}
+
+/**
+ * The touch curve of paths that started at `price` (`max` and `min` are each
+ * path's highest and lowest point, as multiples of it): above the price, the
+ * share of paths that rose to the level; below it, the share that fell to it.
+ */
+export function touchCurve(price: number, max: ArrayLike<number>, min: ArrayLike<number>, levels: number[]): CurvePoint[] {
+  const n = max.length;
+  return levels.map(level => {
+    let hits = 0;
+    if (level >= price) { for (let i = 0; i < n; i++) if (price * max[i] >= level) hits++; }
+    else { for (let i = 0; i < n; i++) if (price * min[i] <= level) hits++; }
+    return { level, probability: n ? hits / n : NaN };
+  });
+}
+
 const money = (n: number, currency: string) => {
   const d = n >= 1000 ? 0 : n >= 1 ? 2 : 4;
   return `${currency === 'USD' ? '$' : ''}${n.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: n >= 1000 ? 0 : Math.min(d, 2) })}${currency && currency !== 'USD' ? ` ${currency}` : ''}`;
@@ -195,7 +219,7 @@ const money = (n: number, currency: string) => {
  * question about a level), and where the price ends (its 10th, 50th and 90th
  * percentile). Null when the history is too short or the horizon has passed.
  */
-export function baseline(s: Series, m: Measure, today: string, horizon: string): Quant | null {
+export function baseline(s: Series, m: Measure, today: string, horizon: string, levels: number[] = []): Quant | null {
   const stats = seriesStats(s);
   const days = daysBetween(today, horizon);
   if (!stats || !(days > 0)) return null;
@@ -225,6 +249,7 @@ export function baseline(s: Series, m: Measure, today: string, horizon: string):
     p10: stats.price * quantile(ends, 0.1),
     p50: stats.price * quantile(ends, 0.5),
     p90: stats.price * quantile(ends, 0.9),
+    curve: touchCurve(stats.price, p.max, p.min, curveLevels(stats.price, [...levels, ...(m.threshold !== undefined ? [m.threshold] : [])])),
     method: `${PATHS.toLocaleString('en-US')} paths to ${horizon}, each day one of ${s.symbol}'s own daily moves from the past ${years === 1 ? 'year' : `${years} years`} drawn at random (volatility ${Math.round(stats.vol * 100)}% a year, average trend removed)${probability !== undefined ? `: ${Math.round(probability * 1000) / 10}% of them${level}` : ''}.`,
   };
 }
@@ -304,6 +329,8 @@ export interface Priced {
   p10: number;
   p50: number;
   p90: number;
+  /** The chance of trading at each level, at the levels asked for. */
+  curve?: CurvePoint[];
 }
 
 /**
@@ -315,33 +342,44 @@ export interface Priced {
  * the worlds pooled read as a probability, not as a tally of three coin
  * tosses.
  */
-export function pricedWorlds(m: Measure, price: number, returns: number[], steps: number[], pushes: number[][], seed: number, perWorld = 2000): Priced {
+export function pricedWorlds(m: Measure, price: number, returns: number[], steps: number[], pushes: number[][], seed: number, perWorld = 2000, levels: number[] = []): Priced {
   const draw = rng(seed);
   const n = returns.length;
   const finals: number[] = [];
+  const highs: number[] = [];
+  const lows: number[] = [];
   let hits = 0;
   const above = m.direction !== 'below';
   const at = (level: number) => (above ? level >= m.threshold! : level <= m.threshold!);
   for (const push of pushes.length ? pushes : [[]]) {
     for (let p = 0; p < perWorld; p++) {
-      let x = 0, lift = 1, met = false;
+      // The path's level as a multiple of the price, its highest and lowest, a world's pushes applied as each period opens.
+      let x = 0, lift = 1, hi = 1, lo = 1;
       for (let i = 0; i < steps.length; i++) {
         lift *= push[i] ?? 1;
-        if (m.touch && m.threshold !== undefined && !met && at(price * Math.exp(x) * lift)) met = true;
+        let v = Math.exp(x) * lift;
+        if (v > hi) hi = v;
+        if (v < lo) lo = v;
         for (let d = 0; d < steps[i] && n; d++) {
           x += returns[Math.floor(draw() * n)];
-          if (m.touch && m.threshold !== undefined && !met && at(price * Math.exp(x) * lift)) met = true;
+          v = Math.exp(x) * lift;
+          if (v > hi) hi = v;
+          if (v < lo) lo = v;
         }
       }
       const end = price * Math.exp(x) * lift;
       finals.push(end);
-      if (m.threshold !== undefined && (m.touch ? met : at(end))) hits++;
+      highs.push(hi);
+      lows.push(lo);
+      if (m.threshold !== undefined && (m.touch ? at(price * (above ? hi : lo)) : at(end))) hits++;
     }
   }
+  const curve = levels.length ? touchCurve(price, highs, lows, levels) : undefined;
   finals.sort((a, b) => a - b);
   return {
     ...(m.threshold !== undefined ? { probability: hits / finals.length } : {}),
     p10: quantile(finals, 0.1), p50: quantile(finals, 0.5), p90: quantile(finals, 0.9),
+    ...(curve ? { curve } : {}),
   };
 }
 
