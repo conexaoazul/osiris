@@ -106,7 +106,8 @@ const PROMISES: { icon: ReactNode; title: string; body: string }[] = [
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-[var(--bg-primary)] px-5 py-14 text-[var(--text-primary)] sm:px-6">
+    // docs-root releases the full-screen map's scroll lock (see globals.css), so the page scrolls.
+    <main className="docs-root min-h-screen bg-[var(--bg-primary)] px-5 py-14 text-[var(--text-primary)] sm:px-6">
       <div className="mx-auto max-w-3xl">
         <Link href="/" className="font-mono text-[11px] tracking-widest text-[var(--text-muted)] hover:text-[var(--cyan-primary)]">
           ← OSIRIS
