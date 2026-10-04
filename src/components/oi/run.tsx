@@ -219,6 +219,8 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
   }
 
   const shown = useTween(value);
+  // The prediction market on this same question: the crowd's number beside OI's.
+  const crowd = frame ? s.context.find(c => c.id === frame.market && c.odds)?.odds : undefined;
   const standing = latestPoints(s);
   return (
     <section className="flex flex-col gap-3.5" aria-label="Prediction">
@@ -230,6 +232,14 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
             {shown === null ? <span className="text-[var(--text-muted)]">—</span> : <>{format(shown)}<span className={`${large ? 'text-[20px]' : 'text-[18px]'} text-[var(--gold-primary)]`}>{suffix}</span></>}
           </div>
           {sub && <p className="mt-1 text-[11.5px] truncate text-[var(--text-secondary)]">{sub}</p>}
+          {crowd && s.report && frame?.kind === 'binary' && (
+            <p className="mt-1 text-[9.5px] font-mono tracking-[0.08em] uppercase text-[var(--text-muted)]" title={`${crowd.platform} prices the same question at ${pct(crowd.probability)}`}>
+              vs {crowd.platform} <span style={{ color: ANCHOR.market }}>{pct(crowd.probability)}</span>{' '}
+              <span style={{ color: Math.abs(s.report.probability - crowd.probability) < 0.02 ? T.body : T.goldLight }}>
+                {Math.abs(s.report.probability - crowd.probability) < 0.02 ? 'in line' : `${s.report.probability > crowd.probability ? '+' : '−'}${Math.round(Math.abs(s.report.probability - crowd.probability) * 100)} pts`}
+              </span>
+            </p>
+          )}
         </div>
         <Trajectory s={s} width={large ? 140 : 128} />
       </div>
