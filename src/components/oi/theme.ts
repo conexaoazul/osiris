@@ -1,50 +1,64 @@
 /**
  * OSIRIS OI: the panel's design tokens.
  *
- * OI wears the platform's theme through its CSS variables, so it is gold and
- * cyan in Core and violet in Ghost. The only colours of its own are the three
- * line colours, which are the arcs' and are set in the Style Studio.
+ * OI is gold and black. Gold leads: what is selected, what is live, the
+ * prediction. Champagne (`alt`) is its quiet second, where the platform would
+ * use cyan, and ivory and greys carry the rest. Red is kept for failure. In
+ * Ghost the same tokens follow that theme's violets.
+ *
+ * The arcs keep their own three colours, set in the Style Studio; OI shows
+ * them only where it draws or explains the arcs (the legend, the graph's
+ * lines), never as a way of marking things in its lists.
  */
 import type { Frame, Link } from '@/lib/oi/types';
-import { outcomeColor } from '@/lib/oi/forecast';
 
 export const T = {
   gold: 'var(--gold-primary)',
   goldLight: 'var(--gold-light)',
-  cyan: 'var(--cyan-primary)',
+  goldDim: 'var(--gold-dim)',
+  /** Champagne: OI's second tone. */
+  alt: 'var(--oi-alt)',
   heading: 'var(--text-heading)',
   text: 'var(--text-primary)',
   body: 'var(--text-secondary)',
   mute: 'var(--text-muted)',
+  /** Small labels: a step brighter than muted, so they can be read on black. */
+  label: 'var(--oi-label)',
   line: 'var(--border-secondary)',
   lineStrong: 'var(--border-primary)',
   active: 'var(--border-active)',
   red: 'var(--alert-red)',
-  orange: 'var(--alert-orange)',
-  green: 'var(--alert-green)',
   /** The arcs' three colours, from the Style Studio. */
   support: 'var(--map-oi-support, #b388ff)',
   oppose: 'var(--map-oi-oppose, #ff5ccb)',
   neutral: 'var(--map-oi-neutral, #8c7cff)',
 };
 
-/** The colours each anchor of a prediction wears (the baseline, the crowd, the simulation, the prediction), the same everywhere it appears. */
-export const ANCHOR = { baseline: T.cyan, market: '#B388FF', simulation: T.gold, prediction: T.goldLight } as const;
+/**
+ * The anchors a prediction is weighed against, told apart by tone on one gold
+ * scale: the baseline in ivory, the crowd in champagne, the simulation in
+ * gold, the prediction in bright gold.
+ */
+export const ANCHOR = { baseline: T.text, market: T.alt, simulation: T.gold, prediction: T.goldLight } as const;
 
 export const gold = (a: number) => `rgba(var(--gold-rgb),${a})`;
-export const cyan = (a: number) => `rgba(var(--cyan-rgb),${a})`;
+export const alt = (a: number) => `rgba(var(--oi-alt-rgb),${a})`;
+export const ivory = (a: number) => `rgba(232,230,224,${a})`;
 export const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+/** The arcs' colour for a line's tone: for drawing the arcs and the graph's lines, and the legend that explains them. */
 export const toneColor = (tone: Link['tone']) => (tone === 'support' ? T.support : tone === 'oppose' ? T.oppose : T.neutral);
 
-/** Toward YES (or higher) in gold, toward NO (or lower) in cyan; a choice in its outcome's colour. */
-export const leanTo = (frame: Frame | null, push: 'yes' | 'no', favors = '') =>
-  frame?.kind === 'choice' && favors ? outcomeColor(Math.max(0, frame.outcomes.indexOf(favors))) : push === 'yes' ? T.gold : T.cyan;
+/** A line's tone as OI writes it in its lists: aligned in gold, opposed in ivory, between in grey. */
+export const toneInk = (tone: Link['tone']) => (tone === 'support' ? T.gold : tone === 'oppose' ? T.heading : T.label);
+
+/** Toward YES (higher, or the outcome it favours) in gold; toward NO (lower) in ivory. */
+export const leanTo = (push: 'yes' | 'no') => (push === 'yes' ? T.gold : T.text);
 
 /** The HUD's small label: mono, spaced, upper case. */
-export const LABEL = 'text-[9px] font-mono tracking-[0.18em] uppercase';
-export const FIELD = 'w-full bg-black/40 border border-[var(--border-primary)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--border-active)] transition-colors';
-/** A surface laid over the busy globe or graph: the theme's panel colour, solid. */
-export const SOLID = 'var(--bg-panel-solid)';
+export const LABEL = 'text-[9.5px] font-mono tracking-[0.14em] uppercase';
+export const FIELD = 'w-full bg-black/50 border border-[var(--border-primary)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--border-active)] focus:shadow-[0_0_0_3px_rgba(var(--gold-rgb),0.08)] transition-[border-color,box-shadow]';
+/** A surface laid over the busy globe or graph: OI's black, solid. */
+export const SOLID = 'var(--oi-solid)';
 
 export const pct = (p: number | null | undefined) => (p === null || p === undefined || !Number.isFinite(p) ? '—' : `${Math.round(p * 100)}%`);
 export const initials = (name: string) => name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();

@@ -46,7 +46,7 @@ export const ObjectSearch = forwardRef<ObjectSearchHandle, { s: RunState; onPick
       </label>
       {open && query.trim() && (
         <div id="oi-search-results" role="listbox" className="absolute right-0 top-[calc(100%+6px)] w-[340px] max-h-[60vh] overflow-y-auto styled-scrollbar rounded-lg border border-[var(--border-primary)] shadow-[0_18px_48px_rgba(0,0,0,0.7)] p-1 z-50"
-          style={{ background: 'var(--bg-panel-solid)' }}>
+          style={{ background: 'var(--oi-solid)' }}>
           {results.length === 0 && <p className="px-3 py-3 text-[11px] text-[var(--text-muted)]">Nothing in this run matches “{query}”.</p>}
           {results.map((o, i) => {
             const on = i === cursor;
@@ -58,7 +58,7 @@ export const ObjectSearch = forwardRef<ObjectSearchHandle, { s: RunState; onPick
                   <span className="block text-[11.5px] truncate text-[var(--text-heading)]">{o.title}</span>
                   {o.subtitle && <span className="block text-[10px] truncate text-[var(--text-muted)]">{o.subtitle}</span>}
                 </span>
-                <span className={`${LABEL} !text-[8px] text-[var(--text-muted)]`}>{TYPE_LABEL[o.type]}</span>
+                <span className={`${LABEL} text-[var(--text-muted)]`}>{TYPE_LABEL[o.type]}</span>
               </button>
             );
           })}

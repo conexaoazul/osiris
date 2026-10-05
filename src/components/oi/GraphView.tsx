@@ -278,7 +278,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
 
   return (
     <div ref={box} className="relative w-full h-full overflow-hidden select-none"
-      style={{ backgroundColor: 'rgba(4,4,10,0.55)', backgroundImage: 'radial-gradient(rgba(var(--gold-rgb),0.10) 1px, transparent 1.2px)', backgroundSize: '22px 22px' }}>
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)', backgroundImage: 'radial-gradient(rgba(var(--gold-rgb),0.10) 1px, transparent 1.2px)', backgroundSize: '22px 22px' }}>
       <svg ref={svg} className="absolute inset-0 w-full h-full touch-none cursor-grab active:cursor-grabbing" role="img" aria-label="Research graph"
         onPointerDown={e => onPointerDown(e, null)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
         <g ref={world}>
@@ -298,7 +298,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
                   className="oi-graph-in"
                   strokeLinecap={e.kind === 'cite' ? 'round' : undefined}
                   style={{
-                    stroke: e.kind === 'evidence' || e.kind === 'cite' ? `color-mix(in srgb, ${tone} 60%, #ddd8f0)` : tone,
+                    stroke: e.kind === 'evidence' || e.kind === 'cite' ? `color-mix(in srgb, ${tone} 60%, #e8e6e0)` : tone,
                     strokeWidth: (e.kind === 'relation' ? 1 + e.strength * 1.6 : e.kind === 'move' ? 0.9 + e.strength : e.kind === 'cite' ? 1.4 : 1) + (on ? 0.8 : 0),
                     strokeDasharray: e.kind === 'cite' ? CITE_DASH : undefined,
                     opacity: lit ? (on ? 1 : 0.06) : BASE_OPACITY[e.kind],
@@ -335,7 +335,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
                   if (a && b) { const p = edgePath(a, b, e.curve); el.setAttribute('x', p.mx.toFixed(1)); el.setAttribute('y', p.my.toFixed(1)); }
                 }}
                   textAnchor="middle" dy="0.35em" className="font-mono"
-                  style={{ fontSize: 'calc(9px * var(--ls, 1))', fill: 'var(--text-secondary)', stroke: 'rgba(4,4,10,0.92)', strokeWidth: 3, paintOrder: 'stroke', strokeLinejoin: 'round' }}>
+                  style={{ fontSize: 'calc(9px * var(--ls, 1))', fill: 'var(--text-secondary)', stroke: 'rgba(0,0,0,0.92)', strokeWidth: 3, paintOrder: 'stroke', strokeLinejoin: 'round' }}>
                   {e.kind === 'cite' && e.from.startsWith('a:') ? `“${clip(e.label, 34)}”` : clip(e.label, 30)}
                 </text>
               );
@@ -355,7 +355,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
       <div className="absolute left-3 top-3 flex flex-col gap-2" style={{ width: FILTER_W - 16 }}>
         <div className="px-1 pointer-events-none">
           <div className="hud-text text-[10px] text-[var(--gold-primary)]">Research graph</div>
-          <div className="mt-0.5 text-[9px] font-mono tracking-[0.12em] text-[var(--text-muted)]">
+          <div className="mt-0.5 text-[10px] font-mono tracking-[0.1em] text-[var(--text-muted)]">
             {graph.nodes.length} NODES · {graph.edges.length} LINKS{isolating ? ' · ISOLATED' : ''}
           </div>
         </div>
@@ -398,7 +398,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
         <ToolButton title="Fit the whole graph and follow it as it grows" onClick={refit} active={following && !framedKey}><Maximize className="w-3.5 h-3.5" /></ToolButton>
         <span className="w-px h-4 mx-0.5 bg-[var(--border-secondary)]" />
         <ToolButton title={panel ? 'Hide the filters' : 'Show the filters'} onClick={() => setPanel(v => !v)} active={panel}>
-          <Filter className="w-3.5 h-3.5" />{hidden > 0 && <span className="text-[var(--alert-orange)]">{hidden}</span>}
+          <Filter className="w-3.5 h-3.5" />{hidden > 0 && <span className="text-[var(--gold-light)]">{hidden}</span>}
         </ToolButton>
       </div>
 
@@ -413,12 +413,12 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
       )}
 
       <div ref={tip} role="tooltip" className="absolute pointer-events-none max-w-[270px] rounded-lg border border-[var(--border-primary)] px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-xl"
-        style={{ background: 'var(--bg-panel-solid)', opacity: hoverBrief ? 1 : 0, transition: 'opacity .15s ease' }}>
+        style={{ background: 'var(--oi-solid)', opacity: hoverBrief ? 1 : 0, transition: 'opacity .15s ease' }}>
         {hoverBrief && (
           <>
             <div className="text-[11.5px] font-medium leading-snug text-[var(--text-heading)]">{hoverBrief.title}</div>
             {hoverBrief.detail && <div className="mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]">{hoverBrief.detail}</div>}
-            <div className="mt-1 text-[8.5px] font-mono tracking-[0.18em] text-[var(--gold-primary)]">CLICK TO OPEN</div>
+            <div className="mt-1 text-[9.5px] font-mono tracking-[0.14em] text-[var(--gold-primary)]">CLICK TO OPEN</div>
           </>
         )}
       </div>
@@ -429,7 +429,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className={`${LABEL} !text-[8px] text-[var(--text-muted)] px-1`}>{label}</span>
+      <span className={`${LABEL} text-[var(--oi-label)] px-1`}>{label}</span>
       {children}
     </div>
   );
@@ -441,7 +441,7 @@ function FilterRow({ on, count, onClick, mark, children }: { on: boolean; count:
       className={`flex items-center gap-2 h-6 px-1.5 rounded text-left text-[10.5px] transition-colors hover:bg-[var(--hover-accent)] disabled:opacity-40 disabled:pointer-events-none ${on ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)] line-through decoration-[var(--text-muted)]'}`}>
       <span className="w-3.5 flex items-center justify-center" style={{ opacity: on ? 1 : 0.4 }}>{mark}</span>
       <span className="flex-1 truncate">{children}</span>
-      <span className="text-[9.5px] font-mono tabular-nums" style={{ color: on ? T.cyan : T.mute }}>{count}</span>
+      <span className="text-[9.5px] font-mono tabular-nums" style={{ color: on ? T.gold : T.mute }}>{count}</span>
     </button>
   );
 }
@@ -462,16 +462,16 @@ function GraphNodeMark({ n, refFn, selected, dim, showLabel, thinking, onDown, o
   const color = NODE_COLOR[n.kind];
   const icon = n.radius * 1.05;
   const label = n.kind === 'evidence' ? clip(n.label, 36) : n.label;
-  const ring: CSSProperties = { fill: 'var(--bg-secondary)', stroke: color, strokeWidth: n.kind === 'evidence' ? 1 : n.kind === 'report' ? 2 : 1.5 };
+  const ring: CSSProperties = { fill: 'var(--oi-raised)', stroke: color, strokeWidth: n.kind === 'evidence' ? 1 : n.kind === 'report' ? 2 : 1.5 };
   return (
     <g ref={refFn} data-oi-node={n.key} style={{ cursor: 'pointer', opacity: dim ? 0.16 : 1, transition: 'opacity .25s ease' }}
       onPointerDown={onDown} onPointerEnter={onEnter} onPointerLeave={onLeave}>
       <g className="oi-graph-in">
-        {thinking && <circle r={n.radius + 6} className="oi-graph-ping" style={{ fill: 'none', stroke: T.cyan, strokeWidth: 1.2 }} vectorEffect="non-scaling-stroke" />}
+        {thinking && <circle r={n.radius + 6} className="oi-graph-ping" style={{ fill: 'none', stroke: T.alt, strokeWidth: 1.2 }} vectorEffect="non-scaling-stroke" />}
         {selected && <circle r={n.radius + 5} style={{ fill: 'none', stroke: '#fff', strokeWidth: 1.5, filter: 'drop-shadow(0 0 6px rgba(var(--gold-rgb),0.8))' }} vectorEffect="non-scaling-stroke" />}
         {n.kind === 'report' && <circle r={n.radius + 4} style={{ fill: 'none', stroke: color, strokeWidth: 1, opacity: 0.35 }} vectorEffect="non-scaling-stroke" />}
-        {/* The actors who play the simulation wear the simulation's colour round their ring. */}
-        {n.cast && <circle r={n.radius + 3.5} style={{ fill: 'none', stroke: T.cyan, strokeWidth: 1.2, opacity: 0.75 }} vectorEffect="non-scaling-stroke" />}
+        {/* The actors who play the simulation wear a champagne ring. */}
+        {n.cast && <circle r={n.radius + 3.5} style={{ fill: 'none', stroke: T.alt, strokeWidth: 1.2, opacity: 0.75 }} vectorEffect="non-scaling-stroke" />}
         <circle r={n.radius} style={ring} vectorEffect="non-scaling-stroke" />
         <circle r={n.radius} style={{ fill: color, opacity: 0.12 }} />
         <TypeIcon k={n.key} subtype={n.subtype} x={-icon / 2} y={-icon / 2} width={icon} height={icon} strokeWidth={1.8} style={{ color, pointerEvents: 'none' }} />
@@ -481,7 +481,7 @@ function GraphNodeMark({ n, refFn, selected, dim, showLabel, thinking, onDown, o
               fontSize: `calc(${n.kind === 'evidence' ? 9 : 10.5}px * var(--ls, 1))`,
               fontWeight: n.kind === 'evidence' ? 500 : 600,
               fill: n.kind === 'actor' ? (n.cast ? 'var(--text-heading)' : 'var(--text-secondary)') : n.kind === 'report' ? 'var(--gold-light)' : 'var(--text-secondary)',
-              stroke: 'rgba(4,4,10,0.92)', strokeWidth: 3, paintOrder: 'stroke', strokeLinejoin: 'round', pointerEvents: 'none',
+              stroke: 'rgba(0,0,0,0.92)', strokeWidth: 3, paintOrder: 'stroke', strokeLinejoin: 'round', pointerEvents: 'none',
             }}>
             {label}
           </text>
@@ -499,13 +499,13 @@ function GraphLegend() {
     </span>
   );
   return (
-    <div className="absolute left-3 bottom-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--border-secondary)] bg-black/50 backdrop-blur-md px-3 py-1.5 text-[8.5px] font-mono tracking-[0.12em] text-[var(--text-secondary)] pointer-events-none">
+    <div className="absolute left-3 bottom-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--border-secondary)] bg-black/50 backdrop-blur-md px-3 py-1.5 text-[9.5px] font-mono tracking-[0.1em] text-[var(--text-secondary)] pointer-events-none">
       {line('ALIGNED · COOPERATES', T.support)}
       {line('OPPOSED · PRESSES', T.oppose)}
       {line('BETWEEN', T.neutral)}
       {line('QUOTE', T.body, '0.5 3')}
       <span className="inline-flex items-center gap-1.5">
-        <svg width="10" height="10" aria-hidden><circle cx="5" cy="5" r="4" fill="none" strokeWidth="1.2" style={{ stroke: T.cyan }} /></svg>PLAYS
+        <svg width="10" height="10" aria-hidden><circle cx="5" cy="5" r="4" fill="none" strokeWidth="1.2" style={{ stroke: T.alt }} /></svg>PLAYS
       </span>
     </div>
   );

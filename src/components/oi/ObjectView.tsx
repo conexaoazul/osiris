@@ -19,7 +19,7 @@ import { LINK_LABEL, TYPE_LABEL } from '@/lib/oi/objects';
 import { moveFor, nodeName, relatedLinks, type Selection } from '@/lib/oi/research';
 import { worldName, type RunState } from '@/lib/oi/state';
 import type { Link, Move } from '@/lib/oi/types';
-import { ANCHOR, LABEL, T, ago, gold, leanTo, pct, tint, toneColor } from './theme';
+import { ANCHOR, LABEL, T, ago, gold, leanTo, pct, tint, toneInk } from './theme';
 import { Avatar, IconButton, Mentions, Overline, PointTag, STANCE, StanceTag, TypeIcon, accentFor } from './atoms';
 import { EventRow, LineGlyph, MoveRow, periodReached } from './lists';
 import { PushTag, Quotes, SOURCE_KIND, SourceLink, Verbatim, sourceLabel } from './quotes';
@@ -49,7 +49,7 @@ function ObjectChip({ s, k, onSelect }: { s: RunState; k: string; onSelect: (k: 
   const subtype = k.startsWith('a:') ? s.actors.find(a => `a:${a.id}` === k)?.kind : k.startsWith('e:') ? s.events.find(e => `e:${e.id}` === k)?.kind : source?.kind ?? '';
   return (
     <button onClick={() => onSelect(k)} title={nodeName(s, k)}
-      className="inline-flex items-center gap-1.5 max-w-full h-6 px-2 rounded border border-[var(--border-secondary)] bg-white/[0.02] text-[11px] text-[var(--text-primary)] hover:border-[var(--border-active)] hover:text-[var(--gold-light)] transition-colors">
+      className="inline-flex items-center gap-1.5 max-w-full h-[26px] px-2 rounded-md border border-[var(--border-secondary)] bg-white/[0.02] text-[11.5px] text-[var(--text-primary)] hover:border-[var(--border-active)] hover:text-[var(--gold-light)] transition-colors">
       <TypeIcon k={k} subtype={subtype} className="w-3 h-3 flex-shrink-0" style={{ color: accentFor(k) }} />
       <span className="truncate">{nodeName(s, k)}</span>
       {source && <span className="font-mono text-[9px] text-[var(--text-muted)] flex-shrink-0">[{source.id}]</span>}
@@ -72,11 +72,11 @@ function QuoteRows({ s, links, onSelect }: { s: RunState; links: Link[]; onSelec
           className="group -mx-1.5 px-1.5 py-1.5 rounded text-left transition-colors hover:bg-[var(--hover-accent)]">
           <span className="flex items-center gap-2">
             <Avatar name={nodeName(s, l.from)} size={18} />
-            <span className="text-[11px] font-medium truncate text-[var(--text-primary)]">{nodeName(s, l.from)}</span>
-            <span className="text-[9px] font-mono tracking-[0.1em] uppercase whitespace-nowrap text-[var(--text-muted)]">{whereOf(l)}</span>
+            <span className="text-[11.5px] font-medium truncate text-[var(--text-primary)]">{nodeName(s, l.from)}</span>
+            <span className="text-[9.5px] font-mono tracking-[0.08em] uppercase whitespace-nowrap text-[var(--text-muted)]">{whereOf(l)}</span>
             <span className="ml-auto"><Verbatim exact={exactOf(s, l)} /></span>
           </span>
-          <span className="mt-1 block pl-[26px] text-[11px] leading-snug text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">“{l.label}”</span>
+          <span className="mt-1 block pl-[26px] text-[11.5px] leading-relaxed text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">“{l.label}”</span>
         </button>
       ))}
     </div>
@@ -87,11 +87,11 @@ function Props({ rows }: { rows: [string, ReactNode][] }) {
   const shown = rows.filter(([, v]) => v !== null && v !== undefined && v !== '');
   if (!shown.length) return null;
   return (
-    <dl className="grid grid-cols-[92px_1fr] gap-x-3 gap-y-1.5 items-baseline">
+    <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-2 items-baseline">
       {shown.map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className={`${LABEL} !text-[8.5px] text-[var(--text-muted)] pt-px`}>{k}</dt>
-          <dd className="text-[11.5px] leading-snug text-[var(--text-primary)] min-w-0 break-words">{v}</dd>
+          <dt className={`${LABEL} text-[var(--oi-label)] pt-px`}>{k}</dt>
+          <dd className="text-[12px] leading-relaxed text-[var(--text-primary)] min-w-0 break-words">{v}</dd>
         </div>
       ))}
     </dl>
@@ -100,10 +100,10 @@ function Props({ rows }: { rows: [string, ReactNode][] }) {
 
 function Group({ label, count, children }: { label: string; count?: number; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-1.5">
+    <section className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <Overline>{label}</Overline>
-        {count !== undefined && <span className="text-[9px] font-mono tabular-nums text-[var(--cyan-primary)]">{count}</span>}
+        {count !== undefined && <span className="text-[10px] font-mono tabular-nums text-[var(--gold-primary)]">{count}</span>}
         <span className="flex-1 h-px bg-[var(--border-secondary)]" />
       </div>
       {children}
@@ -119,7 +119,7 @@ function LeanBar({ lean, words }: { lean: number; words: string }) {
         <span className="absolute top-0 bottom-0 left-1/2 w-px bg-white/30" />
         <span className="absolute -top-[5px] w-[2px] h-[13px] -ml-px rounded-full" style={{ left: `${(0.5 + lean / 2) * 100}%`, background: T.goldLight, boxShadow: `0 0 8px ${gold(0.8)}` }} />
       </span>
-      <span className="text-[9px] font-mono tracking-[0.12em] uppercase text-[var(--text-secondary)]">{words}</span>
+      <span className="text-[9.5px] font-mono tracking-[0.1em] uppercase text-[var(--text-secondary)]">{words}</span>
     </span>
   );
 }
@@ -128,7 +128,7 @@ function StrengthBar({ value, color }: { value: number; color: string }) {
   return (
     <span className="inline-flex items-center gap-2">
       <span className="w-20 h-[3px] rounded-full overflow-hidden bg-white/[0.08]"><span className="block h-full rounded-full" style={{ width: `${value * 100}%`, background: color }} /></span>
-      <span className="text-[10px] font-mono tabular-nums text-[var(--text-secondary)]">{Math.round(value * 100)}</span>
+      <span className="text-[10.5px] font-mono tabular-nums text-[var(--text-secondary)]">{Math.round(value * 100)}</span>
     </span>
   );
 }
@@ -139,15 +139,15 @@ function OwnMove({ s, move, onSelect }: { s: RunState; move: Move; onSelect: (k:
   const period = s.periods.find(p => p.index === move.period);
   return (
     <div className="flex gap-2.5">
-      <span className="mt-[3px] w-6 flex-shrink-0 text-[9px] font-mono tabular-nums text-[var(--text-muted)]" title={period?.label}>P{move.period}</span>
+      <span className="mt-[3px] w-6 flex-shrink-0 text-[10px] font-mono tabular-nums text-[var(--gold-primary)]" title={period?.label}>P{move.period}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 min-w-0">
           <StanceTag stance={move.stance} />
-          {targets.length > 0 && <span className="text-[9.5px] truncate text-[var(--text-muted)]">→ {targets.join(', ')}</span>}
+          {targets.length > 0 && <span className="text-[10.5px] truncate text-[var(--text-muted)]">→ {targets.join(', ')}</span>}
         </div>
-        <p className="mt-0.5 text-[11.5px] leading-[1.5] text-[var(--text-primary)]"><Mentions text={move.action} s={s} onSelect={onSelect} /></p>
-        {move.statement && <p className="mt-0.5 text-[11px] leading-snug italic text-[var(--text-secondary)]">“{move.statement}”</p>}
-        {move.why && <p className="mt-0.5 text-[10.5px] leading-snug text-[var(--text-muted)]">Why: {move.why}</p>}
+        <p className="mt-1 text-[12px] leading-[1.55] text-[var(--text-primary)]"><Mentions text={move.action} s={s} onSelect={onSelect} /></p>
+        {move.statement && <p className="mt-1 text-[11.5px] leading-relaxed italic text-[var(--text-secondary)]">“{move.statement}”</p>}
+        {move.why && <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-muted)]">Why: {move.why}</p>}
         <Quotes s={s} cites={move.cites} onSelect={onSelect} />
       </div>
     </div>
@@ -164,10 +164,10 @@ function LinkRows({ s, links, from, onSelect }: { s: RunState; links: Link[]; fr
           <button key={l.id} onClick={() => onSelect(`link:${l.id}`)}
             className="group flex items-center gap-2.5 -mx-1.5 px-1.5 py-1 rounded text-left transition-colors hover:bg-[var(--hover-accent)]">
             <LineGlyph link={l} />
-            <span className="flex-1 min-w-0 text-[11px] truncate text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
+            <span className="flex-1 min-w-0 text-[11.5px] truncate text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
               {nodeName(s, other)}{l.label && <span className="text-[var(--text-muted)]"> · {l.label}</span>}
             </span>
-            <span className="text-[8.5px] font-mono tracking-[0.12em] uppercase flex-shrink-0" style={{ color: toneColor(l.tone) }}>{TONE_WORD[l.tone]}</span>
+            <span className="text-[9.5px] font-mono tracking-[0.1em] uppercase flex-shrink-0" style={{ color: toneInk(l.tone) }}>{TONE_WORD[l.tone]}</span>
           </button>
         );
       })}
@@ -180,7 +180,7 @@ function Standing({ s, point, onSelect }: { s: RunState; point: RunState['points
   return (
     <div className="flex items-start gap-2.5">
       <PointTag point={point} frame={s.frame} />
-      <span className="text-[11px] leading-snug text-[var(--text-secondary)]"><Mentions text={point.note} s={s} onSelect={onSelect} /></span>
+      <span className="text-[11.5px] leading-relaxed text-[var(--text-secondary)]"><Mentions text={point.note} s={s} onSelect={onSelect} /></span>
     </div>
   );
 }
@@ -207,7 +207,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
   switch (sel.type) {
     case 'link': {
       const l = sel.link;
-      accent = l.kind === 'cite' ? T.body : toneColor(l.tone);
+      accent = l.kind === 'cite' ? T.body : toneInk(l.tone);
       iconLink = l.kind;
       type = 'Link';
       subtype = LINK_LABEL[l.kind];
@@ -286,7 +286,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
         ['Decides', a.persona?.style],
         ['Location', a.place],
         ['Lean', s.frame?.kind === 'choice' ? null : <LeanBar key="l" lean={a.lean} words={leanWords} />],
-        ['Now', deciding.length ? <span key="d" className="text-[var(--cyan-primary)]">Deciding in {deciding.map(worldName).join(', ')}…</span> : null],
+        ['Now', deciding.length ? <span key="d" className="text-[var(--oi-alt)]">Deciding in {deciding.map(worldName).join(', ')}…</span> : null],
       ];
       body = (
         <>
@@ -333,7 +333,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
           {rel.length > 0 && <Group label="Relations" count={rel.length}><LinkRows s={s} links={rel} from={sel.key} onSelect={onSelect} /></Group>}
           {ev.length > 0 && <Group label="Evidence" count={ev.length}><LinkRows s={s} links={ev} from={sel.key} onSelect={onSelect} /></Group>}
           {a.persona && (
-            <button onClick={() => onAsk(a.id)} className="btn-tactical btn-tactical--cyan self-start flex items-center gap-2" style={{ padding: '6px 12px', fontSize: 10 }}>
+            <button onClick={() => onAsk(a.id)} className="oi-btn self-start">
               <MessageSquare className="w-3 h-3" /> Ask {a.name.split(' ').slice(0, 2).join(' ')}
             </button>
           )}
@@ -439,14 +439,14 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
             </Group>
           )}
           {c.kind === 'social' && (
-            <p className="rounded-md px-2.5 py-2 text-[11px] leading-snug border" style={{ color: T.text, background: 'rgba(255,149,0,0.06)', borderColor: 'rgba(255,149,0,0.25)' }}>
+            <p className="rounded-md pl-3 pr-2.5 py-2 text-[11.5px] leading-snug border-l-2" style={{ color: T.text, background: 'rgba(255,255,255,0.03)', borderColor: T.alt }}>
               A post on a social network: an unverified claim, not reporting. The actors were told to weigh it as one.
             </p>
           )}
           {q && <p className="text-[10.5px] leading-snug text-[var(--text-muted)]">{q.method}</p>}
           {c.url && (
             <a href={c.url} target="_blank" rel="noopener noreferrer nofollow"
-              className="self-start inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-[var(--border-primary)] text-[10px] font-mono tracking-[0.12em] uppercase text-[var(--text-secondary)] hover:text-[var(--cyan-primary)] hover:border-[var(--border-active)] transition-colors">
+              className="oi-btn self-start">
               Open the {c.kind === 'wiki' ? 'article on Wikipedia' : c.kind === 'web' ? 'article' : c.kind === 'odds' ? `market on ${c.source}` : c.kind === 'series' ? 'quote on Yahoo Finance' : c.kind === 'social' ? 'post' : 'source'} ↗
             </a>
           )}
@@ -500,7 +500,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
                     <span className="text-[11.5px] leading-snug text-[var(--text-primary)]">{d.text}</span>
                     {(d.sources?.length ?? 0) > 0
                       ? <div className="flex flex-wrap gap-1.5">{d.sources!.map(id => <ObjectChip key={id} s={s} k={`c:${id}`} onSelect={onSelect} />)}</div>
-                      : <span className={`${LABEL} !text-[7.5px] text-[var(--text-muted)]`}>No source given</span>}
+                      : <span className={`${LABEL} text-[var(--text-muted)]`}>No source given</span>}
                   </div>
                 ))}
               </div>
@@ -516,7 +516,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       title = sp.text;
       if (sp.lat !== null && sp.lng !== null) locate = { lat: sp.lat, lng: sp.lng, zoom: 4.5 };
       props = [
-        ['If it happens', <span key="m" className="font-mono uppercase text-[10px] tracking-[0.1em]" style={{ color: leanTo(s.frame, sp.means, sp.favors) }}>{directionWord(s.frame, sp.means, sp.favors)}</span>],
+        ['If it happens', <span key="m" className="font-mono uppercase text-[10.5px] tracking-[0.1em]" style={{ color: leanTo(sp.means) }}>{directionWord(s.frame, sp.means, sp.favors)}</span>],
         ['Where', sp.place],
       ];
       break;
@@ -537,11 +537,11 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
         <TypeIcon k={sel.key} subtype={iconSub} link={iconLink} className="w-4 h-4" />
       </span>
       <div className="min-w-0 flex-1">
-        <h4 className="text-[13.5px] font-semibold leading-snug text-[var(--text-heading)] break-words">{title}</h4>
-        <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-          <span className={`${LABEL} !text-[8.5px]`} style={{ color: accent }}>{type}</span>
-          {subtype && <span className={`${LABEL} !text-[8.5px] text-[var(--text-muted)]`}>· {subtype}</span>}
-          {lit > 1 && <span className={`${LABEL} !text-[8.5px] text-[var(--text-muted)]`}>· {lit} links</span>}
+        <h4 className="text-[14.5px] font-semibold leading-snug text-[var(--text-heading)] break-words">{title}</h4>
+        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+          <span className={LABEL} style={{ color: accent }}>{type}</span>
+          {subtype && <span className={`${LABEL} text-[var(--text-muted)]`}>· {subtype}</span>}
+          {lit > 1 && <span className={`${LABEL} text-[var(--text-muted)]`}>· {lit} links</span>}
         </div>
       </div>
       {variant === 'card' && <div className="flex items-center -mr-1.5 -mt-1">{actions}</div>}
@@ -558,13 +558,12 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
   if (variant === 'panel') {
     return (
       <div className="flex flex-col h-full min-h-0" aria-label={`${type}: ${typeof title === 'string' ? title : ''}`}>
-        <div className="flex items-center gap-1 h-10 px-2 border-b border-[var(--border-secondary)] flex-shrink-0 relative">
-          <span className="absolute inset-x-0 top-0 h-px" style={{ background: accent, opacity: 0.8 }} />
+        <div className="flex items-center gap-1 h-11 px-2 border-b border-[var(--border-secondary)] flex-shrink-0 relative">
           {onBack && <button onClick={onBack} className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-md ${LABEL} text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-accent)]`}><ArrowLeft className="w-3 h-3" /> Lists</button>}
           <span className={`ml-1 ${LABEL} text-[var(--text-secondary)]`}>Object</span>
           <span className="ml-auto flex items-center">{actions}</span>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar p-4 flex flex-col gap-4">{content}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar p-4 flex flex-col gap-5">{content}</div>
       </div>
     );
   }
@@ -576,8 +575,8 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
     el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
   return (
-    <section ref={bringIntoView} className="relative overflow-hidden flex flex-col gap-3 rounded-lg border border-[var(--border-primary)] p-3.5" style={{ background: gold(0.03) }}>
-      <span className="absolute inset-x-0 top-0 h-px" style={{ background: accent, opacity: 0.8 }} />
+    <section ref={bringIntoView} className="relative overflow-hidden flex flex-col gap-4 rounded-lg border border-[var(--border-primary)] p-4" style={{ background: gold(0.03) }}>
+      <span className="absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${gold(0.6)}, transparent)` }} />
       {content}
     </section>
   );

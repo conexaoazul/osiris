@@ -10,7 +10,7 @@
 import { ArrowDownRight, ArrowUpRight, BadgeCheck, ExternalLink, Minus } from 'lucide-react';
 import type { RunState } from '@/lib/oi/state';
 import type { Citation, ContextItem, Frame } from '@/lib/oi/types';
-import { LABEL, T, leanTo } from './theme';
+import { LABEL, T, gold, leanTo } from './theme';
 import { TypeIcon } from './atoms';
 
 /** Where a source is from, in a few words: the outlet, the site, the file, the feed. */
@@ -33,7 +33,7 @@ export function SourceLink({ url, label = 'Open source', className = '' }: { url
   try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
   return (
     <a href={url} target="_blank" rel="noopener noreferrer nofollow" onClick={e => e.stopPropagation()} title={`${label}: ${host}`} aria-label={`${label} at ${host}`}
-      className={`inline-flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--cyan-primary)] transition-colors ${className}`}>
+      className={`inline-flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--gold-light)] transition-colors ${className}`}>
       <ExternalLink className="w-3 h-3 flex-shrink-0" />
     </a>
   );
@@ -43,13 +43,13 @@ export function SourceLink({ url, label = 'Open source', className = '' }: { url
 export function PushTag({ c, frame }: { c: Pick<Citation, 'push' | 'favors'>; frame: Frame | null }) {
   const push = c.push ?? 'neutral';
   if (push === 'neutral' && !c.favors) {
-    return <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-0.5 text-[var(--text-muted)]`} title="Context: pushed neither way"><Minus className="w-2.5 h-2.5" />Context</span>;
+    return <span className="text-[9px] font-mono tracking-[0.1em] uppercase inline-flex items-center gap-0.5 text-[var(--text-muted)]" title="Context: pushed neither way"><Minus className="w-2.5 h-2.5" />Context</span>;
   }
   const dir = push === 'no' ? 'no' : 'yes';
-  const color = leanTo(frame, dir, c.favors ?? '');
+  const color = leanTo(dir);
   const word = frame?.kind === 'choice' ? (c.favors ? `For ${c.favors}` : 'For') : frame?.kind === 'number' ? (dir === 'yes' ? 'Pushes up' : 'Pushes down') : (dir === 'yes' ? 'Toward YES' : 'Toward NO');
   return (
-    <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-0.5 max-w-[150px]`} style={{ color }} title="Which way it pushes the question">
+    <span className="text-[9px] font-mono tracking-[0.1em] uppercase inline-flex items-center gap-0.5 max-w-[150px]" style={{ color }} title="Which way it pushes the question">
       {dir === 'yes' ? <ArrowUpRight className="w-2.5 h-2.5 flex-shrink-0" /> : <ArrowDownRight className="w-2.5 h-2.5 flex-shrink-0" />}
       <span className="truncate">{word}</span>
     </span>
@@ -59,28 +59,28 @@ export function PushTag({ c, frame }: { c: Pick<Citation, 'push' | 'favors'>; fr
 /** Whether a quote was found in its source as quoted. */
 export function Verbatim({ exact }: { exact: boolean }) {
   return exact
-    ? <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-0.5`} style={{ color: T.green }} title="Found word for word in the source"><BadgeCheck className="w-2.5 h-2.5" />Verbatim</span>
-    : <span className={`${LABEL} !text-[7.5px]`} style={{ color: T.orange }} title="Not found word for word in the source">Paraphrase</span>;
+    ? <span className="text-[9px] font-mono tracking-[0.1em] uppercase inline-flex items-center gap-0.5" style={{ color: T.gold }} title="Found word for word in the source"><BadgeCheck className="w-3 h-3" />Verbatim</span>
+    : <span className="text-[9px] font-mono tracking-[0.1em] uppercase text-[var(--text-muted)]" title="Not found word for word in the source">Paraphrase</span>;
 }
 
 export function Quotes({ s, cites, onSelect }: { s: RunState; cites: Citation[] | undefined; onSelect: (key: string | null) => void }) {
   // A move made with no sources to quote has no cites at all; one where the actor quoted nothing says so.
   if (!cites) return null;
   if (!cites.length) {
-    return s.context.length ? <p className={`mt-1.5 ${LABEL} !text-[7.5px] text-[var(--text-muted)]`}>No source quoted</p> : null;
+    return s.context.length ? <p className={`mt-1.5 ${LABEL} text-[var(--text-muted)]`}>No source quoted</p> : null;
   }
   return (
-    <div className="mt-1.5 flex flex-col gap-1">
+    <div className="mt-2 flex flex-col gap-1.5">
       {cites.map(c => {
         const src = s.context.find(x => x.id === c.source);
         return (
-          <div key={c.source} className="group relative border-l-2 pl-2.5 py-0.5 rounded-r transition-colors hover:bg-[var(--hover-accent)]"
-            style={{ borderColor: c.exact ? 'color-mix(in srgb, var(--alert-green) 55%, transparent)' : 'var(--border-primary)' }}>
+          <div key={c.source} className="group relative border-l-2 pl-3 pr-1 py-1 rounded-r transition-colors hover:bg-[var(--hover-accent)]"
+            style={{ borderColor: c.exact ? gold(0.6) : 'var(--border-primary)', background: 'rgba(255,255,255,0.015)' }}>
             <button onClick={e => { e.stopPropagation(); onSelect(`c:${c.source}`); }} title={src?.title ?? c.source} className="block w-full text-left">
-              <span className="block text-[11px] leading-snug text-[var(--text-primary)]">“{c.quote}”</span>
-              {c.why && <span className="block mt-0.5 text-[10px] leading-snug text-[var(--text-secondary)]">{c.why}</span>}
+              <span className="block text-[11.5px] leading-relaxed text-[var(--text-primary)]">“{c.quote}”</span>
+              {c.why && <span className="block mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]">{c.why}</span>}
             </button>
-            <span className="mt-0.5 flex items-center gap-1.5 min-w-0 text-[9px] font-mono tracking-[0.06em] text-[var(--text-muted)]">
+            <span className="mt-1 flex items-center gap-1.5 min-w-0 text-[10px] font-mono tracking-[0.04em] text-[var(--text-muted)]">
               <PushTag c={c} frame={s.frame} />
               <span className="w-px h-2.5 bg-[var(--border-secondary)] flex-shrink-0" />
               <TypeIcon k={`c:${c.source}`} subtype={src?.kind} className="w-2.5 h-2.5 flex-shrink-0" />

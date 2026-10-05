@@ -9,11 +9,11 @@ import {
   Activity, BookOpen, Building2, CalendarClock, CandlestickChart, ChartLine, Crown, Database, Factory, FileText, GitBranch, Globe2, Landmark, Link2,
   MapPin, MessageCircle, Newspaper, Orbit, Quote, Scale, ScrollText, Signpost, Swords, TrendingUp, Users, Zap, type LucideIcon, type LucideProps,
 } from 'lucide-react';
-import { leader, outcomeColor, pointView } from '@/lib/oi/forecast';
+import { pointView } from '@/lib/oi/forecast';
 import { mentions } from '@/lib/oi/objects';
 import type { RunState } from '@/lib/oi/state';
 import type { Frame, LinkKind, Move, WorldPoint } from '@/lib/oi/types';
-import { LABEL, T, gold, cyan, initials } from './theme';
+import { LABEL, T, alt, gold, initials, tint } from './theme';
 
 /** OI's mark in the theme's colours: a core, its ring, and a body in orbit that turns while a run is live. */
 export function OiMark({ size = 16, live = false }: { size?: number; live?: boolean }) {
@@ -22,7 +22,7 @@ export function OiMark({ size = 16, live = false }: { size?: number; live?: bool
       <circle cx="12" cy="12" r="8.5" style={{ stroke: T.gold }} strokeOpacity="0.5" strokeWidth="1.5" />
       <circle cx="12" cy="12" r="3" style={{ fill: T.gold }} />
       <g style={{ transformOrigin: '12px 12px', animation: live ? 'spin 3.2s linear infinite' : undefined }}>
-        <circle cx="12" cy="3.5" r="2.1" style={{ fill: T.cyan }} />
+        <circle cx="12" cy="3.5" r="2.1" style={{ fill: T.alt }} />
       </g>
     </svg>
   );
@@ -31,7 +31,7 @@ export function OiMark({ size = 16, live = false }: { size?: number; live?: bool
 export function IconButton({ children, title, onClick, active, disabled }: { children: ReactNode; title: string; onClick: () => void; active?: boolean; disabled?: boolean }) {
   return (
     <button onClick={onClick} title={title} aria-label={title} disabled={disabled}
-      className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--hover-accent)] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 disabled:opacity-30 disabled:pointer-events-none ${active ? 'text-[var(--gold-light)] bg-[var(--hover-accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
+      className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--hover-accent)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] disabled:opacity-30 disabled:pointer-events-none ${active ? 'text-[var(--gold-light)] bg-[var(--hover-accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-heading)]'}`}>
       {children}
     </button>
   );
@@ -40,7 +40,7 @@ export function IconButton({ children, title, onClick, active, disabled }: { chi
 export function TextButton({ children, onClick, title, tone, active, disabled }: { children: ReactNode; onClick: () => void; title?: string; tone?: 'danger'; active?: boolean; disabled?: boolean }) {
   return (
     <button onClick={onClick} title={title} disabled={disabled}
-      className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[9px] font-mono tracking-[0.16em] uppercase transition-colors hover:bg-[var(--hover-accent)] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 disabled:opacity-30 disabled:pointer-events-none ${tone === 'danger' ? 'text-[var(--text-muted)] hover:text-[var(--alert-red)]' : active ? 'text-[var(--gold-light)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
+      className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[9.5px] font-mono tracking-[0.14em] uppercase whitespace-nowrap transition-colors hover:bg-[var(--hover-accent)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] disabled:opacity-30 disabled:pointer-events-none ${tone === 'danger' ? 'text-[var(--text-secondary)] hover:text-[var(--alert-red)]' : active ? 'text-[var(--gold-light)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-heading)]'}`}>
       {children}
     </button>
   );
@@ -52,24 +52,20 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boo
 }
 
 /** Choices in a row with a sliding highlight, the same control as the map's 3D / 2D switch. */
-export function Segmented<V extends string>({ id, options, value, onChange, size = 'md', accent = 'gold' }: {
+export function Segmented<V extends string>({ id, options, value, onChange, size = 'md' }: {
   id: string; options: { value: V; label: string; icon?: ReactNode; title?: string; disabled?: boolean }[]; value: V; onChange: (v: V) => void; size?: 'sm' | 'md';
-  /** Gold for the platform and Forecast, cyan for Assist. */
-  accent?: 'gold' | 'cyan';
 }) {
-  const rgb = accent === 'cyan' ? 'var(--cyan-rgb)' : 'var(--gold-rgb)';
   return (
-    <div role="tablist" className="flex items-center gap-[3px] p-[3px] rounded-lg border border-[var(--border-secondary)] bg-black/40">
+    <div role="tablist" className="flex items-center gap-[2px] p-[3px] rounded-lg border border-[var(--border-secondary)] bg-black/50">
       {options.map(o => {
         const on = o.value === value;
         return (
           <button key={o.value} role="tab" aria-selected={on} onClick={() => onChange(o.value)} title={o.title} disabled={o.disabled}
-            className={`relative flex-1 flex items-center justify-center gap-1.5 disabled:opacity-35 disabled:pointer-events-none ${size === 'sm' ? 'h-6 px-2 text-[8.5px]' : 'h-7 px-3 text-[9.5px]'} rounded-md font-mono font-medium tracking-[0.18em] uppercase whitespace-nowrap transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${on ? '' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-            style={on ? { color: accent === 'cyan' ? 'var(--cyan-primary)' : 'var(--gold-light)' } : undefined}>
+            className={`relative flex-1 flex items-center justify-center gap-1.5 disabled:opacity-35 disabled:pointer-events-none ${size === 'sm' ? 'h-[26px] px-2 text-[9.5px]' : 'h-8 px-3 text-[10px]'} rounded-md font-mono font-medium tracking-[0.14em] uppercase whitespace-nowrap transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] ${on ? 'text-[var(--gold-light)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-heading)]'}`}>
             {on && (
               <motion.span layoutId={`oi-seg-${id}`} transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                 className="absolute inset-0 rounded-md border"
-                style={{ borderColor: `rgba(${rgb},0.45)`, background: `rgba(${rgb},0.1)`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.08), 0 0 14px rgba(${rgb},0.25)` }} />
+                style={{ borderColor: gold(0.32), background: gold(0.1), boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }} />
             )}
             {o.icon && <span className="relative z-10">{o.icon}</span>}
             <span className="relative z-10">{o.label}</span>
@@ -81,14 +77,14 @@ export function Segmented<V extends string>({ id, options, value, onChange, size
 }
 
 export function Overline({ children, color }: { children: ReactNode; color?: string }) {
-  return <span className={LABEL} style={{ color: color ?? T.mute }}>{children}</span>;
+  return <span className={LABEL} style={{ color: color ?? T.label }}>{children}</span>;
 }
 
 export function SectionTitle({ children, count, right }: { children: ReactNode; count?: number; right?: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 mb-2.5">
-      <span className={`${LABEL} text-[var(--text-secondary)]`}>{children}</span>
-      {count !== undefined && <span className="text-[9px] font-mono tabular-nums text-[var(--cyan-primary)]">{count}</span>}
+    <div className="flex items-center gap-2 mb-3">
+      <span className={LABEL} style={{ color: T.label }}>{children}</span>
+      {count !== undefined && <span className="text-[10px] font-mono tabular-nums text-[var(--gold-primary)]">{count}</span>}
       <span className="flex-1 h-px bg-[var(--border-secondary)]" />
       {right}
     </div>
@@ -96,51 +92,54 @@ export function SectionTitle({ children, count, right }: { children: ReactNode; 
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="py-6 text-center text-[11px] leading-relaxed text-[var(--text-muted)]">{children}</p>;
+  return <p className="py-8 px-4 text-center text-[11.5px] leading-relaxed text-[var(--text-secondary)]">{children}</p>;
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
-  return <kbd className="inline-flex items-center h-4 px-1 rounded border border-[var(--border-primary)] text-[8.5px] font-mono text-[var(--text-muted)] leading-none">{children}</kbd>;
+  return <kbd className="inline-flex items-center h-4 px-1 rounded border border-[var(--border-primary)] text-[9px] font-mono text-[var(--text-secondary)] leading-none">{children}</kbd>;
 }
 
 export function Avatar({ name, size = 28, ring }: { name: string; size?: number; ring?: 'selected' | 'thinking' }) {
   return (
     <span className="rounded-full flex items-center justify-center font-mono font-medium flex-shrink-0 border"
       style={{
-        width: size, height: size, fontSize: size * 0.32, color: T.body, background: 'var(--bg-tertiary)',
-        borderColor: ring === 'selected' ? T.gold : ring === 'thinking' ? T.cyan : 'var(--border-primary)',
-        boxShadow: ring === 'selected' ? `0 0 0 3px ${gold(0.15)}` : ring === 'thinking' ? `0 0 0 3px ${cyan(0.15)}` : undefined,
+        width: size, height: size, fontSize: size * 0.34, color: ring === 'selected' ? T.goldLight : T.body, background: 'var(--oi-raised)',
+        borderColor: ring === 'selected' ? T.gold : ring === 'thinking' ? T.alt : 'var(--border-primary)',
+        boxShadow: ring === 'selected' ? `0 0 0 3px ${gold(0.14)}` : ring === 'thinking' ? `0 0 0 3px ${alt(0.14)}` : undefined,
       }}>
       {initials(name)}
     </span>
   );
 }
 
-/** Where a world stands in figures, with a dot in its outcome's colour for a choice; how it resolved once it has. */
+/** Where a world stands in figures; how it resolved once it has. */
 export function PointTag({ point, frame }: { point: WorldPoint; frame: Frame | null }) {
-  const lead = frame?.kind === 'choice' && point.shares && !point.resolved ? leader(point.shares) : -1;
   return (
     <span title={point.resolved ? 'Resolved in this world' : 'Where the question stands in this world'}
-      className="inline-flex items-center gap-1.5 h-[20px] px-1.5 rounded border bg-white/[0.03] text-[10px] font-mono tabular-nums whitespace-nowrap text-[var(--text-primary)]"
-      style={{ borderColor: point.resolved ? gold(0.45) : 'var(--border-secondary)' }}>
-      {lead >= 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: outcomeColor(lead) }} />}
-      {point.resolved && <span className="text-[8px] tracking-[0.14em] text-[var(--gold-light)]">RESOLVED</span>}
+      className="inline-flex items-center gap-1.5 h-[22px] px-2 rounded-md border text-[10.5px] font-mono tabular-nums whitespace-nowrap text-[var(--text-heading)]"
+      style={{ borderColor: point.resolved ? gold(0.45) : 'var(--border-secondary)', background: point.resolved ? gold(0.08) : 'rgba(255,255,255,0.025)' }}>
+      {point.resolved && <span className="text-[9px] tracking-[0.12em] text-[var(--gold-light)]">RESOLVED</span>}
       {pointView(point, frame)}
     </span>
   );
 }
 
-/** How an actor's move stands toward the actors it is aimed at, in the arcs' own colours. */
+/** How an actor's move stands toward the actors it is aimed at: one gold scale, from working with them to working against them. */
 export const STANCE: Record<Move['stance'], { word: string; color: string }> = {
-  cooperate: { word: 'Cooperates', color: T.support },
-  pressure: { word: 'Presses', color: T.orange },
-  oppose: { word: 'Opposes', color: T.oppose },
-  hold: { word: 'Holds', color: T.neutral },
+  cooperate: { word: 'Cooperates', color: T.gold },
+  pressure: { word: 'Presses', color: T.alt },
+  oppose: { word: 'Opposes', color: T.heading },
+  hold: { word: 'Holds', color: T.label },
 };
 
 export function StanceTag({ stance }: { stance: Move['stance'] }) {
   const st = STANCE[stance];
-  return <span className={`${LABEL} !text-[7.5px] inline-flex items-center gap-1 whitespace-nowrap`} style={{ color: st.color }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />{st.word}</span>;
+  return (
+    <span className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded border text-[9px] font-mono tracking-[0.1em] uppercase whitespace-nowrap"
+      style={{ color: st.color, borderColor: tint(st.color, 30), background: tint(st.color, 6) }}>
+      {st.word}
+    </span>
+  );
 }
 
 /* ───────────── Object types ───────────── */
@@ -171,11 +170,11 @@ export function TypeIcon({ k, subtype, link, ...rest }: LucideProps & { k: strin
   return createElement(link ? LINK_ICON[link] : iconFor(k, subtype), rest);
 }
 
-/** The accent an object wears: gold for the world model and the report, cyan for the simulation, the line's own colour for a link. */
+/** The accent an object wears: gold for the world model and the report, champagne for the simulation. */
 export function accentFor(key: string): string {
   const prefix = key.split(':')[0];
   if (prefix === 'r') return T.goldLight;
-  if (prefix === 'w' || prefix === 'e' || prefix === 'p') return T.cyan;
+  if (prefix === 'w' || prefix === 'e' || prefix === 'p') return T.alt;
   if (prefix === 'c') return T.body;
   return T.gold;
 }

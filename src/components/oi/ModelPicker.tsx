@@ -14,13 +14,13 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronDown, CornerDownLeft, Search } from 'lucide-react';
 import { isPlausibleModel, type ProviderId } from '@/lib/oi/providers';
 import { isReasoning, modelHint, organizeModels, type ModelOption } from '@/lib/oi/models';
-import { FIELD, LABEL, T, cyan, gold } from './theme';
+import { FIELD, LABEL, T, alt, gold } from './theme';
 
 function Tags({ reasoning, isDefault }: { reasoning: boolean; isDefault: boolean }) {
   return (
     <>
-      {reasoning && <span className="h-[15px] px-1 rounded-sm text-[7.5px] font-mono tracking-[0.14em] uppercase leading-[15px]" style={{ color: T.cyan, background: cyan(0.1) }}>Reasoning</span>}
-      {isDefault && <span className="h-[15px] px-1 rounded-sm text-[7.5px] font-mono tracking-[0.14em] uppercase leading-[15px]" style={{ color: T.goldLight, background: gold(0.12) }}>Default</span>}
+      {reasoning && <span className="h-[15px] px-1 rounded-sm text-[8.5px] font-mono tracking-[0.12em] uppercase leading-[15px]" style={{ color: T.alt, background: alt(0.1) }}>Reasoning</span>}
+      {isDefault && <span className="h-[15px] px-1 rounded-sm text-[8.5px] font-mono tracking-[0.12em] uppercase leading-[15px]" style={{ color: T.goldLight, background: gold(0.12) }}>Default</span>}
     </>
   );
 }
@@ -137,7 +137,7 @@ export function ModelPicker({ provider, models, value, onChange, suggested, defa
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.16 }} className="overflow-hidden">
-            <div className="mt-1.5 rounded-md border border-[var(--border-primary)]" style={{ background: 'var(--bg-panel-solid)' }}>
+            <div className="mt-1.5 rounded-md border border-[var(--border-primary)]" style={{ background: 'var(--oi-solid)' }}>
               <div className="relative border-b border-[var(--border-secondary)]">
                 <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                 <input autoFocus value={query} onChange={e => { setQuery(e.target.value); setActive(0); }} onKeyDown={onKey}
@@ -148,8 +148,8 @@ export function ModelPicker({ provider, models, value, onChange, suggested, defa
               <div ref={list} id="oi-model-list" role="listbox" aria-label="Models" className="max-h-[272px] overflow-y-auto styled-scrollbar p-1">
                 {groups.map(g => (
                   <div key={g.key} role="group" aria-label={g.label}>
-                    <div className="sticky top-0 z-10 flex items-center gap-2 px-2.5 pt-2 pb-1" style={{ background: 'var(--bg-panel-solid)' }}>
-                      <span className={`${LABEL} !text-[8px]`} style={{ color: g.key === 'recommended' ? T.goldLight : T.mute }}>{g.label}</span>
+                    <div className="sticky top-0 z-10 flex items-center gap-2 px-2.5 pt-2 pb-1" style={{ background: 'var(--oi-solid)' }}>
+                      <span className={`${LABEL}`} style={{ color: g.key === 'recommended' ? T.goldLight : T.mute }}>{g.label}</span>
                       <span className="flex-1 h-px bg-[var(--border-secondary)]" />
                       <span className="text-[8.5px] font-mono tabular-nums text-[var(--text-muted)]">{g.models.length}</span>
                     </div>

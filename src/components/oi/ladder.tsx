@@ -60,7 +60,7 @@ export function LadderChart({ s, height = 172 }: { s: RunState; height?: number 
             {TICKS.map(t => (
               <g key={t}>
                 <line x1={L} x2={w - R} y1={y(t)} y2={y(t)} style={{ stroke: 'var(--border-secondary)' }} strokeDasharray={t === 1 ? undefined : '2 4'} />
-                <text x={L - 4} y={y(t) + 3} textAnchor="end" className="font-mono" style={{ fontSize: 8, fill: 'var(--text-muted)' }}>{Math.round(t * 100)}%</text>
+                <text x={L - 4} y={y(t) + 3} textAnchor="end" className="font-mono" style={{ fontSize: 9, fill: 'var(--text-muted)' }}>{Math.round(t * 100)}%</text>
               </g>
             ))}
             <line x1={x(q.price)} x2={x(q.price)} y1={Tp} y2={height - B} strokeWidth={1} style={{ stroke: 'var(--text-heading)', opacity: 0.5 }} />
@@ -70,17 +70,17 @@ export function LadderChart({ s, height = 172 }: { s: RunState; height?: number 
             {gaps.map(g => (
               <g key={`${g.direction}${g.level}`}>
                 <line x1={x(g.level)} x2={x(g.level)} y1={y(g.crowd)} y2={y(g.model)} strokeWidth={1} style={{ stroke: ANCHOR.market, opacity: 0.45 }} />
-                <circle cx={x(g.level)} cy={y(g.crowd)} r={3.2} style={{ fill: ANCHOR.market, stroke: 'rgba(4,4,10,0.9)', strokeWidth: 1 }}>
+                <circle cx={x(g.level)} cy={y(g.crowd)} r={3.2} style={{ fill: ANCHOR.market, stroke: 'rgba(0,0,0,0.9)', strokeWidth: 1 }}>
                   <title>{`${g.direction === 'below' ? 'Dip to' : 'Reach'} ${money(g.level)}: ${market.platform} ${Math.round(g.crowd * 1000) / 10}%, model ${Math.round(g.model * 1000) / 10}%`}</title>
                 </circle>
               </g>
             ))}
-            {xTicks.map(v => <text key={v} x={x(v)} y={height - 8} textAnchor="middle" className="font-mono" style={{ fontSize: 8, fill: 'var(--text-muted)' }}>{tick(v)}</text>)}
-            <text x={x(q.price) + 3} y={Tp + 8} className="font-mono" style={{ fontSize: 8, fill: 'var(--text-secondary)' }}>today</text>
+            {xTicks.map(v => <text key={v} x={x(v)} y={height - 8} textAnchor="middle" className="font-mono" style={{ fontSize: 9, fill: 'var(--text-muted)' }}>{tick(v)}</text>)}
+            <text x={x(q.price) + 3} y={Tp + 8} className="font-mono" style={{ fontSize: 9, fill: 'var(--text-secondary)' }}>today</text>
           </svg>
         )}
       </div>
-      <p className={`mt-1 ${LABEL} !text-[7.5px] !tracking-[0.12em] text-[var(--text-muted)] flex flex-wrap gap-x-3 gap-y-0.5`}>
+      <p className={`mt-1 ${LABEL} text-[var(--text-muted)] flex flex-wrap gap-x-3 gap-y-0.5`}>
         <span><span className="inline-block w-2.5 h-[2px] align-middle mr-1" style={{ background: ANCHOR.baseline }} />Statistical baseline</span>
         {sim && <span><span className="inline-block w-2.5 h-[2px] align-middle mr-1" style={{ background: ANCHOR.simulation }} />The simulation, priced</span>}
         <span><span className="inline-block w-1.5 h-1.5 rounded-full align-middle mr-1" style={{ background: ANCHOR.market }} />{market.platform}&apos;s ladder</span>
