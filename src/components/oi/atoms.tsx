@@ -13,16 +13,16 @@ import { pointView } from '@/lib/oi/forecast';
 import { mentions } from '@/lib/oi/objects';
 import type { RunState } from '@/lib/oi/state';
 import type { Frame, LinkKind, Move, WorldPoint } from '@/lib/oi/types';
-import { LABEL, T, alt, gold, initials, tint } from './theme';
+import { LABEL, T, alt, blue, gold, initials, tint } from './theme';
 
-/** OI's mark in the theme's colours: a core, its ring, and a body in orbit that turns while a run is live. */
-export function OiMark({ size = 16, live = false }: { size?: number; live?: boolean }) {
+/** OI's mark: a gold core, its ring, and a body in orbit that turns while OI is at work; the body is blue when it is Assist speaking. */
+export function OiMark({ size = 16, live = false, assist = false }: { size?: number; live?: boolean; assist?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden className="flex-shrink-0">
       <circle cx="12" cy="12" r="8.5" style={{ stroke: T.gold }} strokeOpacity="0.5" strokeWidth="1.5" />
       <circle cx="12" cy="12" r="3" style={{ fill: T.gold }} />
       <g style={{ transformOrigin: '12px 12px', animation: live ? 'spin 3.2s linear infinite' : undefined }}>
-        <circle cx="12" cy="3.5" r="2.1" style={{ fill: T.alt }} />
+        <circle cx="12" cy="3.5" r="2.1" style={{ fill: assist ? T.blue : T.alt }} />
       </g>
     </svg>
   );
@@ -52,20 +52,24 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boo
 }
 
 /** Choices in a row with a sliding highlight, the same control as the map's 3D / 2D switch. */
-export function Segmented<V extends string>({ id, options, value, onChange, size = 'md' }: {
+export function Segmented<V extends string>({ id, options, value, onChange, size = 'md', accent = 'gold' }: {
   id: string; options: { value: V; label: string; icon?: ReactNode; title?: string; disabled?: boolean }[]; value: V; onChange: (v: V) => void; size?: 'sm' | 'md';
+  /** Gold for Forecast and the platform, blue for Assist. */
+  accent?: 'gold' | 'blue';
 }) {
+  const tint = accent === 'blue' ? blue : gold;
   return (
     <div role="tablist" className="flex items-center gap-[2px] p-[3px] rounded-lg border border-[var(--border-secondary)] bg-black/50">
       {options.map(o => {
         const on = o.value === value;
         return (
           <button key={o.value} role="tab" aria-selected={on} onClick={() => onChange(o.value)} title={o.title} disabled={o.disabled}
-            className={`relative flex-1 flex items-center justify-center gap-1.5 disabled:opacity-35 disabled:pointer-events-none ${size === 'sm' ? 'h-[26px] px-2 text-[9.5px]' : 'h-8 px-3 text-[10px]'} rounded-md font-mono font-medium tracking-[0.14em] uppercase whitespace-nowrap transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] ${on ? 'text-[var(--gold-light)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-heading)]'}`}>
+            className={`relative flex-1 flex items-center justify-center gap-1.5 disabled:opacity-35 disabled:pointer-events-none ${size === 'sm' ? 'h-[26px] px-2 text-[9.5px]' : 'h-8 px-3 text-[10px]'} rounded-md font-mono font-medium tracking-[0.14em] uppercase whitespace-nowrap transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] ${on ? '' : 'text-[var(--text-secondary)] hover:text-[var(--text-heading)]'}`}
+            style={on ? { color: accent === 'blue' ? T.blue : T.goldLight } : undefined}>
             {on && (
               <motion.span layoutId={`oi-seg-${id}`} transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                 className="absolute inset-0 rounded-md border"
-                style={{ borderColor: gold(0.32), background: gold(0.1), boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }} />
+                style={{ borderColor: tint(0.32), background: tint(0.1), boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }} />
             )}
             {o.icon && <span className="relative z-10">{o.icon}</span>}
             <span className="relative z-10">{o.label}</span>

@@ -29,8 +29,8 @@ import type { RunState } from '@/lib/oi/state';
 import { progressOf, traceOf } from '@/lib/oi/trace';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { KIND_LABEL, LABEL, SOLID, T, gold } from './theme';
-import { IconButton, OiMark, Segmented, TextButton } from './atoms';
-import { Controls, InjectBox, UsageLine, Verdict } from './run';
+import { IconButton, OiMark, Segmented } from './atoms';
+import { Chip, Controls, InjectBox, UsageLine, Verdict } from './run';
 import { ReportBody } from './report';
 import { ContextList, Legend } from './lists';
 import { ObjectView } from './ObjectView';
@@ -39,7 +39,7 @@ import { GraphView } from './GraphView';
 import { TimelineView } from './TimelineView';
 import { TableView } from './TableView';
 import { ObjectSearch, type ObjectSearchHandle } from './ObjectSearch';
-import { ModeSwitch, type OiMode } from './ModeSwitch';
+import { ModeSwitch, modeTint, type OiMode } from './ModeSwitch';
 
 export type Stage = 'globe' | 'graph' | 'timeline' | 'table';
 export const STAGES: Stage[] = ['globe', 'graph', 'timeline', 'table'];
@@ -151,7 +151,7 @@ export function Workspace(p: WorkspaceProps) {
       {/* ── Top bar ── */}
       <header className="glass-panel oi-glass absolute pointer-events-auto flex items-center gap-3 px-3" style={{ left: L.gap, right: L.gap, top: L.gap, height: 56 }}>
         <div className="flex items-center gap-2 flex-shrink-0 pl-1">
-          <OiMark size={18} live={s?.status === 'running' || p.assistBusy} />
+          <OiMark size={18} live={s?.status === 'running' || p.assistBusy} assist={p.mode === 'assist'} />
           <span className="hud-text text-[12px] text-[var(--text-heading)]">OI</span>
         </div>
         <span className="w-px h-7 bg-[var(--border-secondary)]" />
@@ -180,10 +180,10 @@ export function Workspace(p: WorkspaceProps) {
           <Segmented id="stage" value={shown} onChange={onStage} options={STAGE_OPTIONS(hasRun)} />
         </div>
         {s && <div className="flex-shrink-0 w-[200px]"><ObjectSearch ref={search} s={s} onPick={k => onSelect(k)} /></div>}
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {p.engineMenu}
           {s && <Controls s={s} oi={oi} focus={p.focus} onFocus={p.onFocus} following={p.following} onFollow={p.onFollow} />}
-          {s && <TextButton onClick={share} title="Copy a link that replays this run">{copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} Link</TextButton>}
+          {s && <Chip onClick={share} on={copied} title="Copy a link that replays this run">{copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} {copied ? 'Copied' : 'Link'}</Chip>}
           {s && <IconButton title="New forecast" onClick={p.onNewForecast}><Plus className="w-3.5 h-3.5" /></IconButton>}
           <IconButton title="Leave full screen (Esc)" onClick={() => onTheater?.(false)}><Minimize2 className="w-3.5 h-3.5" /></IconButton>
         </div>
@@ -196,12 +196,12 @@ export function Workspace(p: WorkspaceProps) {
 
       {/* ── Left: the command column ── */}
       <aside className="glass-panel oi-glass absolute pointer-events-auto flex flex-col overflow-hidden" style={{ left: L.gap, top: L.top, bottom: L.gap, width: L.left }} aria-label={p.mode === 'assist' ? 'OI Assist' : 'Forecast'}>
-        <span className="absolute inset-x-0 top-0 h-px z-10" style={{ background: `linear-gradient(90deg, transparent, ${gold(0.7)} 30%, ${gold(0.7)} 70%, transparent)` }} aria-hidden />
+        <span className="absolute inset-x-0 top-0 h-px z-10" style={{ background: `linear-gradient(90deg, transparent, ${modeTint(p.mode)(0.75)} 30%, ${modeTint(p.mode)(0.75)} 70%, transparent)` }} aria-hidden />
         <div className="px-3 py-2.5 border-b border-[var(--border-secondary)] flex-shrink-0">
           <ModeSwitch id="ws" mode={p.mode} onMode={p.onMode} forecastLive={s?.status === 'running'} assistBusy={p.assistBusy} />
         </div>
         {p.mode === 'assist' ? (
-          <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar">{p.assistView}</div>
+          <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar flex flex-col">{p.assistView}</div>
         ) : s ? (
           <>
             <div className="px-4 pt-5 pb-4 border-b border-[var(--border-secondary)] flex flex-col gap-4 flex-shrink-0">

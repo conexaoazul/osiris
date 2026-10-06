@@ -9,16 +9,20 @@ import { PROVIDERS, providerInfo, type ProviderId } from '@/lib/oi/providers';
 import { DEPTHS, PANEL_SEED_MAX, SEED_MAX, estimateCalls, seedCost, type SeedScope } from '@/lib/oi/depths';
 import { checkKey, forgetKey, loadKey, saveEngine, saveKey, type Engine } from '@/lib/oi/client';
 import type { Depth, Frame } from '@/lib/oi/types';
-import { FIELD, KIND_SHORT, LABEL, T, gold, shortName } from './theme';
+import { FIELD, KIND_SHORT, LABEL, T, blue, gold, shortName } from './theme';
 import { Kbd, Overline, SectionTitle, Segmented, Switch, TextButton } from './atoms';
 import { ModelPicker } from './ModelPicker';
 
-export function EnginePill({ engine, ready, open, onClick }: { engine: Engine; ready: boolean; open: boolean; onClick: () => void }) {
+export function EnginePill({ engine, ready, open, onClick, assist = false }: { engine: Engine; ready: boolean; open: boolean; onClick: () => void; /** In Assist the pill wears Assist's blue. */ assist?: boolean }) {
   const info = providerInfo(engine.provider);
+  const color = assist ? T.blue : T.gold;
+  const tint = assist ? blue : gold;
+  const lit = open || !ready;
   return (
     <button onClick={onClick} title="Model engine and key" aria-expanded={open}
-      className={`mr-1 inline-flex items-center gap-1.5 h-7 pl-2 pr-1.5 rounded-md border text-[9.5px] font-mono tracking-[0.12em] uppercase transition-colors max-w-[140px] hover:bg-[var(--hover-accent)] ${open || !ready ? 'border-[var(--border-active)] text-[var(--gold-light)]' : 'border-[var(--border-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-heading)]'}`}>
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={ready ? { background: T.gold, boxShadow: `0 0 6px ${gold(0.7)}` } : { boxShadow: `inset 0 0 0 1.5px ${T.gold}` }} />
+      className={`mr-1 inline-flex items-center gap-1.5 h-7 pl-2 pr-1.5 rounded-md border text-[9.5px] font-mono tracking-[0.12em] uppercase transition-colors max-w-[140px] hover:bg-[var(--hover-accent)] ${lit ? '' : 'border-[var(--border-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-heading)]'}`}
+      style={lit ? { borderColor: tint(0.45), color: assist ? T.blue : T.goldLight } : undefined}>
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={ready ? { background: color, boxShadow: `0 0 6px ${tint(0.7)}` } : { boxShadow: `inset 0 0 0 1.5px ${color}` }} />
       <span className="truncate">{ready ? shortName(info.name) : 'Add key'}</span>
       <ChevronDown className="w-3 h-3 flex-shrink-0 transition-transform" style={{ transform: open ? 'rotate(180deg)' : undefined }} />
     </button>
@@ -348,9 +352,9 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
           </span>
         </div>
         {!question && trending.length > 0 && (
-          <Suggestions title="What the markets are betting on" onPick={setQuestion} items={trending.slice(0, 4).map(x => ({
+          <Suggestions title="What the markets are betting on now" onPick={setQuestion} items={trending.slice(0, 4).map(x => ({
             key: x.url + x.question, text: x.question, hint: `${x.event}: Polymarket prices YES at ${Math.round(x.probability * 1000) / 10}%`,
-            tag: <span className="text-[11px] font-mono tabular-nums text-[var(--gold-primary)]">{Math.round(x.probability * 100)}%</span>,
+            tag: <span className="text-[11px] font-mono tabular-nums text-[var(--gold-primary)]">{Math.round(x.probability * 100)}%<span className="ml-1 text-[9.5px] text-[var(--text-muted)]">yes</span></span>,
           }))} />
         )}
         {!question && (
@@ -412,7 +416,10 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
           {!starting && <ArrowRight className="w-4 h-4" />}
         </button>
       ) : (
-        <button onClick={onKey} className="oi-btn !h-10 w-full"><KeyRound className="w-3.5 h-3.5" /> Add your {shortName(providerName)} key to start</button>
+        <div className="flex flex-col gap-2.5 rounded-lg border px-3.5 py-3" style={{ borderColor: gold(0.3), background: gold(0.04) }}>
+          <p className="text-[11.5px] leading-snug text-[var(--text-secondary)]">OI runs on your own AI key. It stays in this browser, and a prediction is billed to your account: about {estimateCalls(depth, useFeeds)} model calls at this depth.</p>
+          <button onClick={onKey} className="oi-btn-primary w-full"><KeyRound className="w-4 h-4" /> Add your {shortName(providerName)} key</button>
+        </div>
       )}
 
       <p className="text-[10.5px] leading-relaxed text-[var(--text-muted)]">

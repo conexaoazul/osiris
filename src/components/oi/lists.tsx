@@ -30,7 +30,8 @@ export function RunTabs(p: {
     ...(!p.theater && s.report ? [{ id: 'report' as Tab, label: 'Prediction' }] : []),
     { id: 'sim', label: 'Simulation', count: s.events.length || undefined },
     { id: 'actors', label: 'Actors', count: castOf(s).length || undefined },
-    { id: 'world', label: 'World', count: s.actors.length || undefined },
+    // The world model and the sources behind it: "Research", so it is not mistaken for the simulated worlds.
+    { id: 'world', label: 'Research' },
     { id: 'ask', label: 'Q&A' },
   ];
   const current = tabs.some(t => t.id === tab) ? tab : 'sim';

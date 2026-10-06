@@ -15,19 +15,20 @@
  * lists and object views on the right. Whatever is selected, from the globe,
  * the graph or a list, opens as that object.
  *
- * It is gold and black (oi/theme), and violet in Ghost. The run itself lives in the page (useOi), so
- * closing this panel leaves the globe drawing.
+ * Forecast is gold and black, Assist the platform's blue (oi/theme); both
+ * violet in Ghost. The run itself lives in the page (useOi), so closing this
+ * panel leaves the globe drawing.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { History, Maximize2, Plus, X } from 'lucide-react';
+import { ArrowRight, History, Maximize2, Plus, X } from 'lucide-react';
 import { PROVIDERS, providerInfo } from '@/lib/oi/providers';
 import { loadEngine, loadKey, type Engine, type OiClient } from '@/lib/oi/client';
 import { resolve } from '@/lib/oi/research';
-import { T, LABEL, gold } from './oi/theme';
+import { T } from './oi/theme';
 import { IconButton, OiMark } from './oi/atoms';
-import { ModeSwitch, type OiMode } from './oi/ModeSwitch';
+import { ModeSwitch, modeTint, type OiMode } from './oi/ModeSwitch';
 import { AssistView } from './oi/assist/AssistView';
 import type { AssistClient } from '@/lib/oi/assist/client';
 import { AskForm, EnginePill, EngineSheet } from './oi/engine';
@@ -83,11 +84,12 @@ export default function OiPanel(props: OiPanelProps) {
   // Settings come from this browser's storage. The panel only renders once opened, on the client.
   const [engine, setEngine] = useState<Engine>(initialEngine);
   const [key, setKey] = useState(() => loadKey(initialEngine().provider));
-  const [engineOpen, setEngineOpen] = useState(() => {
-    const e = initialEngine();
-    return providerInfo(e.provider).needsKey && !loadKey(e.provider);
-  });
+  // The engine sheet opens when asked: a first visit sees what OI does, and the Run and Send buttons ask for a key.
+  const [engineOpen, setEngineOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  // Opened from a button lower down (Run, or Assist's composer), the sheet is brought into view.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (engineOpen) scroller.current?.scrollTo({ top: 0, behavior: 'smooth' }); }, [engineOpen]);
   const [tab, setTab] = useState<Tab | null>(null);
   const [askTarget, setAskTarget] = useState('report');
 
@@ -138,7 +140,7 @@ export default function OiPanel(props: OiPanelProps) {
   if (theater && !embedded) {
     const engineMenu = (
       <div className="relative">
-        <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} />
+        <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} assist={props.mode === 'assist'} />
         <AnimatePresence>
           {engineOpen && (
             <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}
@@ -168,14 +170,13 @@ export default function OiPanel(props: OiPanelProps) {
 
   /* ── Docked, or in the phone drawer ── */
   const assisting = props.mode === 'assist';
+  // The switch below says which mode is showing; the header is OI itself and its controls.
   const header = (
-    <header className={`flex items-center gap-2.5 ${embedded ? 'pb-3' : 'h-[52px] pl-4 pr-2.5 border-b border-[var(--border-secondary)]'}`}>
-      {!embedded && <OiMark size={18} live={s?.status === 'running' || props.assist.busy} />}
+    <header className={`flex items-center gap-2.5 ${embedded ? 'pb-3' : 'h-[52px] pl-4 pr-2.5 border-b border-[var(--border-secondary)] bg-black/30'}`}>
+      {!embedded && <OiMark size={18} live={s?.status === 'running' || props.assist.busy} assist={assisting} />}
       {!embedded && <span className="hud-text text-[12px] text-[var(--text-heading)]">OI</span>}
-      {!embedded && <span className="w-px h-3.5 bg-[var(--border-primary)]" />}
-      <span className={`${LABEL} truncate`} style={{ color: T.gold }}>{assisting ? 'Assist' : 'Forecast'}</span>
       <div className="ml-auto flex items-center gap-0.5">
-        <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} />
+        <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} assist={assisting} />
         {!assisting && <IconButton title={showHistory ? 'Back' : 'Your predictions'} onClick={() => setShowHistory(v => !v)} active={showHistory}><History className="w-3.5 h-3.5" /></IconButton>}
         {!assisting && s && <IconButton title="New prediction" onClick={reset}><Plus className="w-3.5 h-3.5" /></IconButton>}
         {!embedded && props.onTheater && <IconButton title="Full screen: the OI workspace" onClick={() => props.onTheater?.(true)}><Maximize2 className="w-3.5 h-3.5" /></IconButton>}
@@ -220,6 +221,17 @@ export default function OiPanel(props: OiPanelProps) {
           <div className="px-4 pt-4 pb-5 flex flex-col gap-6 border-b border-[var(--border-secondary)]">
             <RunHead s={s} oi={oi} focus={props.focus} onFocus={props.onFocus} following={props.following} onFollow={props.onFollow} />
             <Verdict key={oi.runId ?? ''} s={s} />
+            {!embedded && props.onTheater && (
+              <button onClick={() => props.onTheater?.(true)}
+                className="group -mt-1 flex items-center gap-3 w-full rounded-lg border border-[var(--border-secondary)] bg-white/[0.015] px-3 py-2.5 text-left transition-colors hover:border-[var(--border-active)] hover:bg-[var(--hover-accent)]">
+                <Maximize2 className="w-4 h-4 flex-shrink-0 text-[var(--gold-primary)]" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[12px] font-medium text-[var(--text-heading)]">Open the workspace</span>
+                  <span className="block text-[10.5px] text-[var(--text-muted)] truncate">The research graph, every world on a timeline, every object in tables</span>
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 flex-shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--gold-light)]" />
+              </button>
+            )}
           </div>
           <AnimatePresence mode="wait">
             {selection && (
@@ -240,11 +252,11 @@ export default function OiPanel(props: OiPanelProps) {
 
   return (
     <div className="glass-panel oi-glass relative overflow-hidden flex flex-col max-h-[calc(100vh-8rem)]">
-      {/* A thread of gold along the top edge. */}
-      <span className="absolute inset-x-0 top-0 h-px z-10" style={{ background: `linear-gradient(90deg, transparent, ${gold(0.7)} 30%, ${gold(0.7)} 70%, transparent)` }} aria-hidden />
+      {/* A thread along the top edge in the mode's colour: gold for Forecast, blue for Assist. */}
+      <span className="absolute inset-x-0 top-0 h-px z-10 transition-[background] duration-500" style={{ background: `linear-gradient(90deg, transparent, ${modeTint(props.mode)(0.75)} 30%, ${modeTint(props.mode)(0.75)} 70%, transparent)` }} aria-hidden />
       {header}
       {modeSwitch}
-      <div className="min-h-0 overflow-y-auto styled-scrollbar">{body}</div>
+      <div ref={scroller} className="min-h-0 overflow-y-auto styled-scrollbar">{body}</div>
     </div>
   );
 }

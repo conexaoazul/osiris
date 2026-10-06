@@ -6,11 +6,15 @@
  * switches the layers on, finds what is live, marks it, and puts it on screen
  * as cards you can click through; it reads the markets, opens panels, and
  * starts forecasts. Each turn shows what OI did, step by step, as it does it.
+ *
+ * Assist is OI's friendly side, in the platform's blue: a greeting, things to
+ * try, chat bubbles, and a composer that is always within reach. A forecast it
+ * starts stays in Forecast's gold.
  */
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ArrowUp, Compass, Eraser, ExternalLink, Globe2, Layers, LayoutDashboard, List, Loader2, LocateFixed, MapPin, Mic, MousePointerClick, Navigation, Orbit, PanelRight,
+  ArrowUp, ArrowUpRight, Eraser, ExternalLink, Globe2, KeyRound, Layers, LayoutDashboard, List, Loader2, LocateFixed, MapPin, Mic, MousePointerClick, Navigation, Orbit, PanelRight,
   RotateCcw, ScanSearch, Search, Square, TrendingUp, Volume2, VolumeX, X, type LucideProps,
 } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
@@ -18,7 +22,7 @@ import type { ActionView, AssistClient, Entry } from '@/lib/oi/assist/client';
 import type { Mode, ToolName } from '@/lib/oi/assist/protocol';
 import type { Card } from '@/lib/oi/assist/tools';
 import { currentAnswer } from '@/lib/oi/state';
-import { LABEL, T, alt, gold, shortName } from '../theme';
+import { LABEL, T, blue, gold, shortName } from '../theme';
 import { OiMark, Segmented } from '../atoms';
 import { canSpeak, useDictation } from './voice';
 
@@ -40,11 +44,11 @@ const MODES: { value: Mode; label: string; title: string }[] = [
 
 /** What OI can do, each with something to try: a tile sends its example. */
 const CAPABILITIES: { icon: typeof Navigation; title: string; mode: Mode; text: string }[] = [
-  { icon: Navigation, title: 'Take you anywhere', mode: 'navigate', text: 'Take me to the Strait of Hormuz and show the shipping' },
+  { icon: Navigation, title: 'Take me somewhere', mode: 'navigate', text: 'Take me to the Strait of Hormuz and show the shipping' },
   { icon: Search, title: 'Find what is live', mode: 'research', text: 'Military aircraft near the Baltic Sea' },
-  { icon: MapPin, title: 'Mark and frame it', mode: 'research', text: 'Earthquakes above M5 in the last day' },
-  { icon: ScanSearch, title: 'Read your view', mode: 'research', text: 'What am I looking at?' },
-  { icon: TrendingUp, title: 'Read the markets', mode: 'research', text: 'How are oil, gold and bitcoin trading?' },
+  { icon: MapPin, title: 'Mark it on the map', mode: 'research', text: 'Earthquakes above M5 in the last day' },
+  { icon: ScanSearch, title: 'Explain my view', mode: 'research', text: 'What am I looking at?' },
+  { icon: TrendingUp, title: 'Check the markets', mode: 'research', text: 'How are oil, gold and bitcoin trading?' },
   { icon: LayoutDashboard, title: 'Drive the workspace', mode: 'auto', text: 'Open the workspace on the graph' },
 ];
 
@@ -71,12 +75,22 @@ function describe(a: ActionView): string {
   }
 }
 
+/** OI's face in the conversation: its mark in a soft blue ring that glows while it works. */
+function Face({ busy = false, size = 28 }: { busy?: boolean; size?: number }) {
+  return (
+    <span className="rounded-full flex items-center justify-center flex-shrink-0 border transition-shadow duration-300"
+      style={{ width: size, height: size, background: blue(0.08), borderColor: blue(0.4), boxShadow: busy ? `0 0 0 4px ${blue(0.12)}` : undefined }}>
+      <OiMark size={Math.round(size * 0.55)} live={busy} assist />
+    </span>
+  );
+}
+
 /** OI's words: paragraphs, and "- " lines as a list. */
 function Prose({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   let bullets: string[] = [];
   const flush = (k: number) => {
-    if (bullets.length) blocks.push(<ul key={`u${k}`} className="flex flex-col gap-0.5 pl-1">{bullets.map((b, i) => <li key={i} className="flex gap-2"><span className="text-[var(--oi-alt)]">·</span><span>{b}</span></li>)}</ul>);
+    if (bullets.length) blocks.push(<ul key={`u${k}`} className="flex flex-col gap-1 pl-0.5">{bullets.map((b, i) => <li key={i} className="flex gap-2"><span className="mt-[8px] w-1 h-1 rounded-full flex-shrink-0" style={{ background: T.blue }} /><span>{b}</span></li>)}</ul>);
     bullets = [];
   };
   text.split('\n').forEach((line, i) => {
@@ -85,17 +99,32 @@ function Prose({ text }: { text: string }) {
     else { flush(i); if (t) blocks.push(<p key={i}>{t}</p>); }
   });
   flush(-1);
-  return <div className="flex flex-col gap-1.5 text-[12px] leading-[1.6] text-[var(--text-primary)]">{blocks}</div>;
+  return <div className="flex flex-col gap-2 text-[12.5px] leading-[1.6] text-[var(--text-primary)]">{blocks}</div>;
+}
+
+/** Three dots, one after another: OI is thinking. */
+function Thinking() {
+  return (
+    <span className="inline-flex items-center gap-2 h-8 px-3 rounded-2xl rounded-tl-md border text-[11.5px] text-[var(--text-secondary)]" style={{ borderColor: blue(0.2), background: blue(0.05) }}>
+      <span className="inline-flex items-center gap-[3px]" aria-hidden>
+        {[0, 1, 2].map(i => (
+          <motion.span key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: T.blue }}
+            animate={{ opacity: [0.25, 1, 0.25], y: [0, -2, 0] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.16 }} />
+        ))}
+      </span>
+      Thinking
+    </span>
+  );
 }
 
 function ActionRow({ a }: { a: ActionView }) {
-  const color = a.status === 'ok' || a.status === 'running' ? T.alt : a.status === 'error' ? T.red : T.mute;
+  const color = a.status === 'ok' || a.status === 'running' ? T.blue : a.status === 'error' ? T.red : T.mute;
   return (
-    <div className="flex items-start gap-2 py-1">
-      <span className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border" style={{ borderColor: 'var(--border-secondary)', color }}>
+    <div className="flex items-start gap-2.5 py-1">
+      <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ color, background: a.status === 'pending' ? 'transparent' : blue(0.1), boxShadow: a.status === 'pending' ? 'inset 0 0 0 1px var(--border-primary)' : undefined }}>
         {a.status === 'running' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ToolIcon tool={a.tool} className="w-3 h-3" />}
       </span>
-      <span className={`flex-1 min-w-0 text-[10.5px] leading-snug ${a.status === 'error' ? 'text-[var(--alert-red)]' : a.status === 'pending' ? 'text-[var(--text-muted)]' : 'text-[var(--text-secondary)]'}`}>
+      <span className={`flex-1 min-w-0 pt-px text-[11px] leading-snug ${a.status === 'error' ? 'text-[var(--alert-red)]' : a.status === 'pending' ? 'text-[var(--text-muted)]' : 'text-[var(--text-secondary)]'}`}>
         {a.summary || describe(a)}
       </span>
     </div>
@@ -107,17 +136,18 @@ function CardView({ card, oi, onLocate, onOpenForecast, onWorkspace }: {
 }) {
   const [all, setAll] = useState(false);
   if (card.kind === 'forecast') {
+    // A forecast belongs to Forecast: it keeps Forecast's gold, even here.
     const live = oi.runId === card.runId ? oi.state : null;
     const answer = live ? currentAnswer(live) : '';
     return (
-      <div className="rounded-md border border-[var(--border-primary)] p-3 flex flex-col gap-2" style={{ background: gold(0.04) }}>
+      <div className="rounded-xl border p-3 flex flex-col gap-2" style={{ borderColor: gold(0.3), background: gold(0.04) }}>
         <div className="flex items-center gap-2">
           <OiMark size={14} live={live?.status === 'running'} />
           <span className={`${LABEL} text-[var(--gold-primary)]`}>Forecast</span>
-          {live && <span className={`${LABEL} text-[var(--text-muted)] truncate`}>{live.status === 'running' ? live.phaseLabel : live.status}</span>}
+          {live && <span className="text-[10.5px] text-[var(--text-muted)] truncate">{live.status === 'running' ? live.phaseLabel : live.status === 'done' ? 'complete' : live.status}</span>}
         </div>
-        <p className="text-[11.5px] font-semibold leading-snug text-[var(--text-heading)]">{card.title}</p>
-        {answer && <p className="text-[18px] font-mono font-light tabular-nums text-[var(--text-heading)]" style={{ textShadow: `0 0 16px ${gold(0.3)}` }}>{answer}</p>}
+        <p className="text-[12px] font-semibold leading-snug text-[var(--text-heading)]">{card.title}</p>
+        {answer && <p className="text-[20px] font-mono font-light tabular-nums text-[var(--text-heading)]" style={{ textShadow: `0 0 16px ${gold(0.3)}` }}>{answer}</p>}
         <div className="flex items-center gap-1.5">
           <button onClick={() => { if (card.runId && oi.runId !== card.runId) void oi.watch(card.runId); onOpenForecast(); }} className="oi-btn !h-7">
             <Orbit className="w-3 h-3" /> Open forecast
@@ -129,39 +159,39 @@ function CardView({ card, oi, onLocate, onOpenForecast, onWorkspace }: {
   }
   const shown = all ? card.items : card.items.slice(0, 8);
   return (
-    <div className="rounded-md border border-[var(--border-secondary)] bg-black/25 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border-secondary)]">
-        {card.kind === 'markets' ? <TrendingUp className="w-3 h-3 text-[var(--oi-alt)]" /> : card.kind === 'place' ? <MapPin className="w-3 h-3 text-[var(--oi-alt)]" /> : <List className="w-3 h-3 text-[var(--oi-alt)]" />}
-        <span className={`${LABEL} text-[var(--text-secondary)] truncate flex-1`}>{card.title}</span>
-        {card.subtitle && <span className="text-[9px] font-mono text-[var(--text-muted)]">{card.subtitle}</span>}
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: blue(0.18), background: 'rgba(0,0,0,0.25)' }}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: blue(0.12), background: blue(0.04) }}>
+        {createElement(card.kind === 'markets' ? TrendingUp : card.kind === 'place' ? MapPin : List, { className: 'w-3.5 h-3.5 flex-shrink-0', style: { color: T.blue } })}
+        <span className="text-[11.5px] font-medium text-[var(--text-heading)] truncate flex-1">{card.title}</span>
+        {card.subtitle && <span className="text-[10px] font-mono text-[var(--text-muted)]">{card.subtitle}</span>}
       </div>
-      {card.items.length === 0 && <p className="px-3 py-2.5 text-[11px] text-[var(--text-muted)]">Nothing matched.</p>}
+      {card.items.length === 0 && <p className="px-3 py-2.5 text-[11.5px] text-[var(--text-muted)]">Nothing matched.</p>}
       <div className="flex flex-col divide-y divide-[var(--border-secondary)]">
         {shown.map((it, i) => {
           const placed = it.lat !== undefined && it.lng !== undefined;
           const body = (
             <>
-              <span className="w-5 text-[9px] font-mono tabular-nums text-[var(--text-muted)] flex-shrink-0">{i + 1}</span>
+              <span className="w-5 text-[10px] font-mono tabular-nums text-[var(--text-muted)] flex-shrink-0">{i + 1}</span>
               <span className="flex-1 min-w-0">
-                <span className="block text-[11px] leading-snug truncate text-[var(--text-primary)]">{it.label}</span>
-                {it.detail && <span className="block text-[9.5px] font-mono truncate text-[var(--text-muted)]">{it.detail}</span>}
+                <span className="block text-[11.5px] leading-snug truncate text-[var(--text-primary)]">{it.label}</span>
+                {it.detail && <span className="block text-[10px] font-mono truncate text-[var(--text-muted)]">{it.detail}</span>}
               </span>
-              {it.value && <span className="text-[10.5px] font-mono tabular-nums whitespace-pre flex-shrink-0" style={{ color: it.tone === 'up' ? T.gold : it.tone === 'down' ? T.heading : T.text }}>{it.value}</span>}
-              {placed && <LocateFixed className="w-3 h-3 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--oi-alt)]" />}
+              {it.value && <span className="text-[11px] font-mono tabular-nums whitespace-pre flex-shrink-0" style={{ color: it.tone === 'up' ? T.green : it.tone === 'down' ? T.red : T.text }}>{it.value}</span>}
+              {placed && <LocateFixed className="w-3 h-3 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--cyan-primary)]" />}
             </>
           );
           return placed ? (
             <button key={i} onClick={() => onLocate(it.lat!, it.lng!, card.kind === 'place' ? undefined : 8)} title="Fly there"
-              className="group flex items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[var(--hover-accent)]">{body}</button>
+              className="group flex items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[rgba(var(--cyan-rgb),0.06)]">{body}</button>
           ) : it.url ? (
-            <a key={i} href={it.url} target="_blank" rel="noopener noreferrer" className="group flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-[var(--hover-accent)]">{body}</a>
+            <a key={i} href={it.url} target="_blank" rel="noopener noreferrer" className="group flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-[rgba(var(--cyan-rgb),0.06)]">{body}</a>
           ) : (
             <div key={i} className="flex items-center gap-2 px-3 py-1.5">{body}</div>
           );
         })}
       </div>
       {card.items.length > 8 && (
-        <button onClick={() => setAll(v => !v)} className={`w-full h-7 ${LABEL} text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-accent)] border-t border-[var(--border-secondary)]`}>
+        <button onClick={() => setAll(v => !v)} className="w-full h-8 text-[11px] text-[var(--cyan-primary)] hover:bg-[rgba(var(--cyan-rgb),0.06)] border-t border-[var(--border-secondary)]">
           {all ? 'Show fewer' : `Show all ${card.items.length}`}
         </button>
       )}
@@ -169,37 +199,35 @@ function CardView({ card, oi, onLocate, onOpenForecast, onWorkspace }: {
   );
 }
 
+const MODE_WORD: Record<Mode, string> = { auto: '', navigate: 'Navigate', research: 'Research', forecast: 'Forecast' };
+
 function Turn({ e, oi, onLocate, onOpenForecast, onWorkspace, onRetry }: {
   e: Entry; oi: OiClient; onLocate: (lat: number, lng: number, zoom?: number) => void; onOpenForecast: () => void; onWorkspace?: () => void; onRetry: (text: string, mode: Mode) => void;
 }) {
   if (e.role === 'user') {
     return (
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="self-end max-w-[88%] flex flex-col items-end gap-1">
-        {e.mode !== 'auto' && <span className={`${LABEL}`} style={{ color: e.mode === 'forecast' ? T.goldLight : T.alt }}>{e.mode}</span>}
-        <div className="rounded-lg rounded-br-sm px-3 py-2 text-[12px] leading-relaxed border" style={{ color: T.text, background: alt(0.08), borderColor: alt(0.3) }}>{e.text}</div>
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="self-end max-w-[86%] flex flex-col items-end gap-1">
+        {e.mode !== 'auto' && <span className="text-[10px] font-medium" style={{ color: e.mode === 'forecast' ? T.goldLight : T.blue }}>{MODE_WORD[e.mode]}</span>}
+        <div className="rounded-2xl rounded-br-md px-3.5 py-2 text-[12.5px] leading-relaxed border text-[var(--text-heading)]" style={{ background: blue(0.12), borderColor: blue(0.28) }}>{e.text}</div>
       </motion.div>
     );
   }
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2.5">
-      <span className="mt-0.5 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 border bg-[var(--oi-raised)] transition-shadow" style={{ borderColor: alt(0.45), boxShadow: e.busy ? `0 0 0 3px ${alt(0.12)}` : undefined }}>
-        <OiMark size={13} live={e.busy} />
-      </span>
-      <div className="flex-1 min-w-0 flex flex-col gap-2">
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2.5 max-w-full">
+      <Face busy={e.busy} />
+      <div className="flex-1 min-w-0 flex flex-col gap-2.5 pt-0.5">
         {e.says.map((s, i) => <Prose key={i} text={s} />)}
         {e.actions.length > 0 && (
-          <div className="rounded-md border border-[var(--border-secondary)] px-2.5 py-1 bg-white/[0.015]">
+          <div className="rounded-xl border px-2.5 py-1.5" style={{ borderColor: blue(0.15), background: blue(0.03) }}>
             {e.actions.map((a, i) => <ActionRow key={i} a={a} />)}
           </div>
         )}
         {e.cards.map((c, i) => <CardView key={i} card={c} oi={oi} onLocate={onLocate} onOpenForecast={onOpenForecast} onWorkspace={onWorkspace} />)}
-        {e.busy && !e.says.length && !e.actions.length && (
-          <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]"><Loader2 className="w-3 h-3 animate-spin text-[var(--oi-alt)]" /> Thinking…</div>
-        )}
+        {e.busy && !e.says.length && !e.actions.length && <div><Thinking /></div>}
         {e.error && (
-          <div className="flex items-center gap-2 text-[11px]">
+          <div className="flex items-center gap-2 text-[11.5px]">
             <span className="text-[var(--alert-red)]">{e.error}</span>
-            {e.retry && <button onClick={() => onRetry(e.retry!.text, e.retry!.mode)} className={`inline-flex items-center gap-1 ${LABEL} text-[var(--text-muted)] hover:text-[var(--oi-alt)]`}><RotateCcw className="w-3 h-3" /> Retry</button>}
+            {e.retry && <button onClick={() => onRetry(e.retry!.text, e.retry!.mode)} className="inline-flex items-center gap-1 text-[11px] text-[var(--cyan-primary)] hover:underline"><RotateCcw className="w-3 h-3" /> Try again</button>}
           </div>
         )}
       </div>
@@ -249,42 +277,52 @@ export function AssistView(p: AssistViewProps) {
     el.style.height = `${Math.min(el.scrollHeight, 110)}px`;
   }, [text]);
 
+  // Without a key a tile fills the box instead of sending, and the box asks for one.
+  const tryIt = (t: string, m: Mode) => { if (p.ready) send(t, m); else { setText(t); setMode(m); } };
+  const canSend = Boolean(text.trim()) && !dictation.listening;
+
   return (
-    <div className="flex flex-col min-h-0">
-      <div className="flex-1 px-4 pt-4 pb-3 flex flex-col gap-4">
+    <div className="flex-1 flex flex-col">
+      <div className="flex-1 px-4 pt-5 pb-4 flex flex-col gap-4">
         {assist.entries.length === 0 ? (
-          <div className="flex flex-col gap-3.5">
-            <div>
-              <span className={`${LABEL}`} style={{ color: T.alt }}>OI Assist</span>
-              <div className="mt-1 flex items-center gap-2">
-                <Compass className="w-4 h-4" style={{ color: T.alt }} />
-                <h3 className="text-[13px] font-semibold tracking-wide text-[var(--text-heading)]">Talk to the map</h3>
+          <div className="flex flex-col gap-5">
+            <div className="flex items-start gap-3">
+              <Face size={40} />
+              <div className="min-w-0 pt-0.5">
+                <h3 className="text-[16px] font-semibold text-[var(--text-heading)]">Hi, I&apos;m OI</h3>
+                <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+                  Ask me about anything on the map, by typing or out loud. I&apos;ll fly you there, switch on the right layers and show you what&apos;s live.
+                </p>
               </div>
-              <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-secondary)]">
-                Say it or type it. OI flies you there, switches the layers on, finds what is live, marks it and puts it on screen, on your own model key.
-              </p>
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {CAPABILITIES.map(c => (
-                <button key={c.title} onClick={() => (p.ready ? send(c.text, c.mode) : setText(c.text))} disabled={assist.busy} title={c.text}
-                  className="group flex flex-col gap-1 rounded-md border border-[var(--border-secondary)] bg-white/[0.015] px-2.5 py-2 text-left transition-colors hover:border-[rgba(var(--oi-alt-rgb),0.4)] hover:bg-[rgba(var(--oi-alt-rgb),0.05)] disabled:opacity-40">
-                  <span className="flex items-center gap-1.5">
-                    {createElement(c.icon, { className: 'w-3.5 h-3.5 flex-shrink-0', style: { color: T.alt } })}
-                    <span className="text-[11px] font-medium text-[var(--text-primary)] truncate">{c.title}</span>
-                  </span>
-                  <span className="text-[10px] leading-snug text-[var(--text-muted)] line-clamp-2 group-hover:text-[var(--text-secondary)]">“{c.text}”</span>
-                </button>
-              ))}
+            <div>
+              <span className="block mb-2 text-[11px] font-medium text-[var(--text-secondary)]">Try asking</span>
+              <div className="grid grid-cols-2 gap-2">
+                {CAPABILITIES.map(c => (
+                  <button key={c.title} onClick={() => tryIt(c.text, c.mode)} disabled={assist.busy} title={c.text}
+                    className="group flex flex-col gap-1.5 rounded-xl border border-[var(--border-secondary)] bg-white/[0.02] p-2.5 text-left transition-all hover:border-[rgba(var(--cyan-rgb),0.4)] hover:bg-[rgba(var(--cyan-rgb),0.05)] hover:-translate-y-px disabled:opacity-40 disabled:pointer-events-none">
+                    <span className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: blue(0.12) }}>
+                        {createElement(c.icon, { className: 'w-3.5 h-3.5', style: { color: T.blue } })}
+                      </span>
+                      <span className="text-[11.5px] font-medium text-[var(--text-heading)] truncate">{c.title}</span>
+                    </span>
+                    <span className="text-[10.5px] leading-snug text-[var(--text-muted)] line-clamp-2 group-hover:text-[var(--text-secondary)]">“{c.text}”</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <button onClick={() => (p.ready ? send(HANDOFF, 'forecast') : setText(HANDOFF))} disabled={assist.busy}
-              className="group flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors disabled:opacity-40"
+            <button onClick={() => tryIt(HANDOFF, 'forecast')} disabled={assist.busy}
+              className="group flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-[rgba(var(--gold-rgb),0.08)] disabled:opacity-40 disabled:pointer-events-none"
               style={{ borderColor: gold(0.3), background: gold(0.04) }}>
-              <Orbit className="w-3.5 h-3.5 flex-shrink-0" style={{ color: T.goldLight }} />
-              <span className="flex-1 min-w-0">
-                <span className="block text-[11px] font-medium text-[var(--text-primary)]">Hand a question to Forecast</span>
-                <span className="block text-[10px] leading-snug text-[var(--text-muted)] truncate group-hover:text-[var(--text-secondary)]">“{HANDOFF}”</span>
+              <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: gold(0.12) }}>
+                <Orbit className="w-3.5 h-3.5" style={{ color: T.goldLight }} />
               </span>
-              <ArrowUp className="w-3 h-3 rotate-45 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: T.goldLight }} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-[11.5px] font-medium text-[var(--text-heading)]">Or ask me to forecast something</span>
+                <span className="block text-[10.5px] leading-snug text-[var(--text-muted)] truncate group-hover:text-[var(--text-secondary)]">“{HANDOFF}”</span>
+              </span>
+              <ArrowUpRight className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: T.goldLight }} />
             </button>
           </div>
         ) : assist.entries.map(e => (
@@ -293,47 +331,54 @@ export function AssistView(p: AssistViewProps) {
         <div ref={end} />
       </div>
 
-      <div className="sticky bottom-0 px-3 pt-2 pb-3 border-t border-[var(--border-secondary)] flex flex-col gap-2" style={{ background: 'var(--oi-solid)' }}>
-        <Segmented id="assist-mode" size="sm" value={mode} onChange={setMode} options={MODES} />
+      <div className="sticky bottom-0 px-3 pt-2.5 pb-3 border-t flex flex-col gap-2" style={{ background: 'var(--oi-solid)', borderColor: blue(0.12) }}>
+        <Segmented id="assist-mode" size="sm" accent="blue" value={mode} onChange={setMode} options={MODES} />
         {p.ready ? (
-          <div className="flex items-end gap-1.5 rounded-lg border border-[var(--border-primary)] bg-black/40 focus-within:border-[rgba(var(--oi-alt-rgb),0.55)] focus-within:shadow-[0_0_0_3px_rgba(var(--oi-alt-rgb),0.08)] transition-[border-color,box-shadow] px-2 py-1.5">
+          <div className="flex items-end gap-1.5 rounded-2xl border border-[var(--border-primary)] bg-black/50 focus-within:border-[rgba(var(--cyan-rgb),0.5)] focus-within:shadow-[0_0_0_3px_rgba(var(--cyan-rgb),0.08)] transition-[border-color,box-shadow] pl-3.5 pr-1.5 py-1.5">
             <textarea ref={input} value={dictation.listening ? dictation.heard : text} rows={1}
               onChange={e => setText(e.target.value.slice(0, 2000))}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(text); } }}
-              placeholder={dictation.listening ? 'Listening…' : mode === 'forecast' ? 'What should OI predict?' : 'Ask OI, or tell it where to go'}
+              placeholder={dictation.listening ? 'Listening…' : mode === 'forecast' ? 'What should I forecast?' : 'Ask me anything, or tell me where to go'}
               aria-label="Message to OI" readOnly={dictation.listening}
-              className="flex-1 resize-none bg-transparent outline-none text-[12px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] py-1 max-h-[110px]" />
+              className="flex-1 resize-none bg-transparent outline-none text-[12.5px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] py-1 max-h-[110px]" />
             {dictation.supported && (
               <button onClick={() => (dictation.listening ? dictation.stop() : dictation.start())} disabled={assist.busy} aria-pressed={dictation.listening}
                 title={dictation.listening ? 'Stop listening' : 'Talk to OI'} aria-label={dictation.listening ? 'Stop listening' : 'Talk to OI'}
-                className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-30 ${dictation.listening ? 'text-[var(--alert-red)] bg-[rgba(255,61,61,0.12)] animate-osiris-pulse' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-accent)]'}`}>
+                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-30 ${dictation.listening ? 'text-[var(--alert-red)] bg-[rgba(255,61,61,0.12)] animate-osiris-pulse' : 'text-[var(--text-secondary)] hover:text-[var(--cyan-primary)] hover:bg-[rgba(var(--cyan-rgb),0.08)]'}`}>
                 <Mic className="w-4 h-4" />
               </button>
             )}
             {assist.busy ? (
-              <button onClick={assist.stop} title="Stop" aria-label="Stop" className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 text-[var(--alert-red)] hover:bg-[rgba(255,61,61,0.1)]"><Square className="w-3.5 h-3.5" /></button>
+              <button onClick={assist.stop} title="Stop" aria-label="Stop" className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[var(--alert-red)] bg-[rgba(255,61,61,0.08)] hover:bg-[rgba(255,61,61,0.16)]"><Square className="w-3 h-3" /></button>
             ) : (
-              <button onClick={() => send(text)} disabled={!text.trim()} title="Send (Enter)" aria-label="Send"
-                className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 border border-[rgba(var(--oi-alt-rgb),0.5)] text-[var(--oi-alt)] bg-[rgba(var(--oi-alt-rgb),0.1)] hover:bg-[rgba(var(--oi-alt-rgb),0.2)] disabled:opacity-30 disabled:pointer-events-none transition-colors">
-                <ArrowUp className="w-4 h-4" />
+              <button onClick={() => send(text)} disabled={!canSend} title="Send (Enter)" aria-label="Send"
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all disabled:opacity-35 disabled:pointer-events-none"
+                style={canSend ? { background: T.blue, color: '#04121a', boxShadow: `0 4px 14px ${blue(0.3)}` } : { color: T.blue, boxShadow: `inset 0 0 0 1px ${blue(0.4)}` }}>
+                <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
               </button>
             )}
           </div>
         ) : (
-          <button onClick={p.onKey} className="oi-btn !h-10 w-full">Add your {shortName(p.providerName)} key to talk to OI</button>
+          <div className="flex flex-col gap-2 rounded-2xl border px-3.5 py-3" style={{ borderColor: blue(0.25), background: blue(0.05) }}>
+            <p className="text-[11.5px] leading-snug text-[var(--text-secondary)]">I run on your own AI key. It stays in this browser and is only used for your requests.</p>
+            <button onClick={p.onKey} className="self-start inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full text-[11.5px] font-medium transition-colors"
+              style={{ background: T.blue, color: '#04121a' }}>
+              <KeyRound className="w-3.5 h-3.5" /> Add your {shortName(p.providerName)} key
+            </button>
+          </div>
         )}
-        <div className="flex items-center gap-2 text-[9px] font-mono tracking-[0.1em] text-[var(--text-muted)]">
-          {dictation.error ? <span className="text-[var(--alert-red)]">{dictation.error}</span> : <span>ENTER TO SEND · SHIFT+ENTER NEW LINE</span>}
+        <div className="flex items-center gap-2 text-[10.5px] text-[var(--text-muted)]">
+          {dictation.error ? <span className="text-[var(--alert-red)]">{dictation.error}</span> : <span>Enter to send · Shift+Enter for a new line</span>}
           <span className="ml-auto flex items-center gap-0.5">
             {canSpeak() && (
               <button onClick={() => p.onSpeak(!p.speakOn)} aria-pressed={p.speakOn} title={p.speakOn ? 'Stop reading replies aloud' : 'Read replies aloud'}
-                className={`h-6 px-1.5 rounded flex items-center gap-1 transition-colors hover:bg-[var(--hover-accent)] ${p.speakOn ? 'text-[var(--oi-alt)]' : 'hover:text-[var(--text-primary)]'}`}>
-                {p.speakOn ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />} VOICE
+                className={`h-6 px-1.5 rounded-md flex items-center gap-1 transition-colors hover:bg-[rgba(var(--cyan-rgb),0.08)] ${p.speakOn ? 'text-[var(--cyan-primary)]' : 'hover:text-[var(--text-primary)]'}`}>
+                {p.speakOn ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />} Voice
               </button>
             )}
             {assist.entries.length > 0 && (
-              <button onClick={assist.clear} title="Start a new conversation" className="h-6 px-1.5 rounded flex items-center gap-1 transition-colors hover:bg-[var(--hover-accent)] hover:text-[var(--text-primary)]">
-                <X className="w-3 h-3" /> CLEAR
+              <button onClick={assist.clear} title="Start a new conversation" className="h-6 px-1.5 rounded-md flex items-center gap-1 transition-colors hover:bg-[rgba(var(--cyan-rgb),0.08)] hover:text-[var(--text-primary)]">
+                <X className="w-3 h-3" /> New chat
               </button>
             )}
           </span>

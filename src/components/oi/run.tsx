@@ -9,6 +9,7 @@ import { Camera, Check, Crosshair, Square, Zap } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
 import { currentAnswer, latestPoints, type RunState } from '@/lib/oi/state';
 import { formatAmount, leader, positionIn } from '@/lib/oi/forecast';
+import { formatDuration } from '@/lib/oi/trace';
 import { ANCHOR, KIND_LABEL, LABEL, T, fit, gold, ivory, pct, smooth } from './theme';
 import { OiMark, Overline, PointTag, TextButton } from './atoms';
 
@@ -42,29 +43,35 @@ function useTween(target: number | null, ms = 900): number | null {
   return target === null ? null : shown ?? 0;
 }
 
-/** The run's five stages as one connected line. */
+/**
+ * The run's five stages as one connected line. The dots sit evenly from edge
+ * to edge; the end labels align to the edges so they stay inside the panel.
+ */
 export function PhaseRail({ s }: { s: RunState }) {
-  const at = s.status === 'done' ? PHASES.length : PHASES.findIndex(p => p.id === s.phase);
-  const inset = 16;
+  const n = PHASES.length;
+  const at = s.status === 'done' ? n : PHASES.findIndex(p => p.id === s.phase);
+  const along = (i: number) => `calc((100% - 7px) * ${i / (n - 1)})`;
   return (
-    <div className="relative w-full px-3">
-      <div className="absolute top-[3px] h-px bg-[var(--border-primary)]" style={{ left: inset, right: inset }} />
-      <div className="absolute top-[3px] h-px transition-[width] duration-700"
-        style={{ left: inset, width: `calc((100% - ${inset * 2}px) * ${Math.min(at, PHASES.length - 1) / (PHASES.length - 1)})`, background: T.gold, boxShadow: `0 0 8px ${gold(0.6)}` }} />
-      <div className="relative flex justify-between">
-        {PHASES.map((p, i) => {
-          const done = i < at;
-          const now = i === at && s.status === 'running';
-          return (
-            <div key={p.id} className="flex flex-col items-center gap-1.5" style={{ width: 0 }}>
-              <span className="relative w-[7px] h-[7px] rounded-full" style={{ background: done || now ? T.gold : 'var(--oi-solid)', boxShadow: `0 0 0 1px ${done || now ? T.gold : 'var(--border-primary)'}` }}>
-                {now && <span className="absolute inset-[-4px] rounded-full animate-ping" style={{ background: gold(0.35) }} />}
-              </span>
-              <span className="text-[9px] font-mono tracking-[0.12em] uppercase whitespace-nowrap" style={{ color: now ? T.goldLight : done ? T.body : T.mute }}>{p.label}</span>
-            </div>
-          );
-        })}
-      </div>
+    <div className="relative w-full h-[30px]" aria-label={`Stage ${Math.min(at + 1, n)} of ${n}`}>
+      <span className="absolute top-[3px] left-[3px] right-[3px] h-px bg-[var(--border-primary)]" />
+      <span className="absolute top-[3px] left-[3px] h-px transition-[width] duration-700"
+        style={{ width: `calc((100% - 6px) * ${Math.min(at, n - 1) / (n - 1)})`, background: T.gold, boxShadow: `0 0 8px ${gold(0.6)}` }} />
+      {PHASES.map((p, i) => {
+        const done = i < at;
+        const now = i === at && s.status === 'running';
+        const failed = i === at && s.status === 'failed';
+        return (
+          <span key={p.id}>
+            <span className="absolute top-0 w-[7px] h-[7px] rounded-full" style={{ left: along(i), background: failed ? T.red : done || now ? T.gold : 'var(--oi-solid)', boxShadow: `0 0 0 1px ${failed ? T.red : done || now ? T.gold : 'var(--border-primary)'}` }}>
+              {now && <span className="absolute inset-[-4px] rounded-full animate-ping" style={{ background: gold(0.35) }} />}
+            </span>
+            <span className="absolute top-[15px] text-[9px] font-mono tracking-[0.1em] uppercase whitespace-nowrap"
+              style={{ ...(i === 0 ? { left: 0 } : i === n - 1 ? { right: 0 } : { left: `calc(3.5px + ${along(i)})`, transform: 'translateX(-50%)' }), color: failed ? T.red : now ? T.goldLight : done ? T.body : T.mute }}>
+              {p.label}
+            </span>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -76,27 +83,48 @@ export function StatusLine({ s }: { s: RunState }) {
       <p role="status" className="flex items-center gap-2 text-[11.5px] min-w-0 text-[var(--text-secondary)]">
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-osiris-pulse" style={{ background: T.gold, boxShadow: `0 0 6px ${gold(0.8)}` }} />
         <span className="truncate min-w-0">{s.phaseLabel || 'Starting'}</span>
-        {thinking > 0 && <span className="whitespace-nowrap font-mono text-[10px] tracking-[0.08em] text-[var(--oi-alt)]" title="Actors deciding their move, across the worlds">· {thinking} deciding</span>}
+        {thinking > 0 && <span className="whitespace-nowrap font-mono text-[10px] tracking-[0.06em] text-[var(--oi-alt)]" title="Actors deciding their move, across the worlds">· {thinking} deciding</span>}
       </p>
     );
   }
   if (s.status === 'failed') return <p role="status" className="text-[11.5px] text-[var(--alert-red)] truncate">{s.message || 'The run failed.'}</p>;
   if (s.status === 'cancelled') return <p role="status" className="text-[11.5px] text-[var(--text-secondary)]">Stopped.</p>;
-  return <p role="status" className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-secondary)]"><Check className="w-3.5 h-3.5 text-[var(--gold-primary)]" /> Prediction complete</p>;
+  const took = s.startedAt && s.endedAt ? formatDuration(s.endedAt - s.startedAt) : '';
+  return (
+    <p role="status" className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-secondary)]">
+      <Check className="w-3.5 h-3.5 text-[var(--gold-primary)]" /> Prediction complete
+      {took && <span className="font-mono text-[10px] text-[var(--text-muted)]">· {took}, {s.usage.calls} model calls</span>}
+    </p>
+  );
+}
+
+/** A small pill button: a run's toggles and actions. On, it is gold. */
+export function Chip({ children, onClick, title, on = false, danger = false, disabled = false }: { children: ReactNode; onClick?: () => void; title: string; on?: boolean; danger?: boolean; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} title={title} aria-pressed={onClick && !danger ? on : undefined} disabled={disabled || !onClick}
+      className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[9.5px] font-mono tracking-[0.12em] uppercase whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-active)] disabled:cursor-default ${
+        on ? 'border-[var(--border-active)] bg-[var(--gold-primary)]/10 text-[var(--gold-light)]'
+          : danger ? 'border-[var(--border-secondary)] text-[var(--text-secondary)] hover:border-[rgba(255,61,61,0.4)] hover:text-[var(--alert-red)] hover:bg-[rgba(255,61,61,0.06)]'
+            : 'border-[var(--border-secondary)] text-[var(--text-secondary)] hover:border-[var(--border-primary)] hover:text-[var(--text-heading)] hover:bg-[var(--hover-accent)]'}`}>
+      {children}
+    </button>
+  );
 }
 
 export function Controls({ s, oi, focus, onFocus, following, onFollow }: { s: RunState; oi: OiClient; focus?: boolean; onFocus?: () => void; following?: boolean; onFollow?: () => void }) {
   return (
-    <div className="flex items-center gap-0.5">
-      {following !== undefined && onFollow && (following
-        ? <span title="The camera follows the run. Move the map to take over." className={`inline-flex items-center gap-1.5 h-7 px-2 cursor-default whitespace-nowrap ${LABEL} text-[var(--gold-light)]`}><Camera className="w-3 h-3" /> Following</span>
-        : <TextButton onClick={onFollow} title="Let the camera follow the run again"><Camera className="w-3 h-3" /> Follow camera</TextButton>)}
-      {onFocus && (
-        <TextButton onClick={onFocus} active={focus} title={focus ? 'Bring the other map layers back' : 'Hide the other map layers so the analysis stands out'}>
-          <Crosshair className="w-3 h-3" /> {focus ? 'Focused' : 'Focus'}
-        </TextButton>
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {following !== undefined && onFollow && (
+        <Chip on={following} onClick={following ? undefined : onFollow} title={following ? 'The camera follows the run. Move the map to take over.' : 'Let the camera follow the run again'}>
+          <Camera className="w-3 h-3" /> {following ? 'Following' : 'Follow'}
+        </Chip>
       )}
-      {s.status === 'running' && oi.canSteer && <TextButton tone="danger" onClick={() => oi.cancel()}><Square className="w-2.5 h-2.5" /> Stop</TextButton>}
+      {onFocus && (
+        <Chip on={focus} onClick={onFocus} title={focus ? 'Bring the other map layers back' : 'Hide the other map layers so the analysis stands out'}>
+          <Crosshair className="w-3 h-3" /> Focus
+        </Chip>
+      )}
+      {s.status === 'running' && oi.canSteer && <Chip danger onClick={() => oi.cancel()} title="Stop the run"><Square className="w-2.5 h-2.5" /> Stop</Chip>}
     </div>
   );
 }
@@ -114,10 +142,11 @@ export function RunHead({ s, oi, focus, onFocus, following, onFollow }: { s: Run
           </p>
         )}
       </div>
-      <PhaseRail s={s} />
-      <div className="flex flex-col gap-1">
+      {/* The stages matter while it runs (and where it stopped); once done, a line says so. */}
+      {s.status !== 'done' && <PhaseRail s={s} />}
+      <div className="flex flex-col gap-2.5">
         <StatusLine s={s} />
-        <div className="-ml-2"><Controls s={s} oi={oi} focus={focus} onFocus={onFocus} following={following} onFollow={onFollow} /></div>
+        <Controls s={s} oi={oi} focus={focus} onFocus={onFocus} following={following} onFollow={onFollow} />
       </div>
     </div>
   );
@@ -129,7 +158,7 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
   const frame = s.frame;
   const last = s.rounds[s.rounds.length - 1] ?? null;
   const final = Boolean(s.report);
-  const caption = final ? 'Prediction' : last ? `${s.worlds.length} worlds · period ${last.round} of ${s.periodsPlanned}` : s.status === 'running' ? 'Forming' : 'Prediction';
+  const caption = final ? 'Prediction' : last ? `So far · ${s.worlds.length} worlds, period ${last.round} of ${s.periodsPlanned}` : s.status === 'running' ? 'The prediction' : 'Prediction';
 
   let value: number | null = null;
   let format = (v: number) => `${Math.round(v * 100)}`;
@@ -224,10 +253,20 @@ export function Verdict({ s, large = false }: { s: RunState; large?: boolean }) 
       <div className="flex items-end gap-4">
         <div className="min-w-0 flex-1">
           <Overline>{caption}</Overline>
-          <div className={`mt-1.5 flex items-baseline gap-1 font-mono font-light tabular-nums tracking-[-0.03em] ${large ? 'text-[52px] leading-[0.92]' : 'text-[46px] leading-none'}`}
-            style={{ color: T.heading, textShadow: `0 0 26px ${gold(0.22)}` }}>
-            {shown === null ? <span className="text-[var(--text-muted)]">—</span> : <>{format(shown)}<span className={`${large ? 'text-[22px]' : 'text-[20px]'} text-[var(--gold-primary)]`}>{suffix}</span></>}
-          </div>
+          {shown === null && s.status === 'running' ? (
+            // No figure yet: say when one comes, rather than show an empty number.
+            <div className="mt-2">
+              <p className="flex items-center gap-2 text-[14px] font-medium text-[var(--text-heading)]">
+                <span className="w-2 h-2 rounded-full animate-osiris-pulse" style={{ background: T.gold, boxShadow: `0 0 8px ${gold(0.8)}` }} /> Forming
+              </p>
+              <p className="mt-1 text-[11.5px] leading-snug text-[var(--text-secondary)]">The figure appears after the first period of simulated time, then firms up as the worlds play on.</p>
+            </div>
+          ) : (
+            <div className={`mt-1.5 flex items-baseline gap-1 font-mono font-light tabular-nums tracking-[-0.03em] ${large ? 'text-[52px] leading-[0.92]' : 'text-[46px] leading-none'}`}
+              style={{ color: T.heading, textShadow: `0 0 26px ${gold(0.22)}` }}>
+              {shown === null ? <span className="text-[var(--text-muted)]">—</span> : <>{format(shown)}<span className={`${large ? 'text-[22px]' : 'text-[20px]'} text-[var(--gold-primary)]`}>{suffix}</span></>}
+            </div>
+          )}
           {sub && <p className="mt-1.5 text-[12.5px] font-medium truncate text-[var(--gold-light)]">{sub}</p>}
           {crowd && s.report && frame?.kind === 'binary' && (
             <p className="mt-1 text-[10px] font-mono tracking-[0.06em] uppercase text-[var(--text-muted)]" title={`${crowd.platform} prices the same question at ${pct(crowd.probability)}`}>
@@ -260,7 +299,8 @@ function Trajectory({ s, width = 128 }: { s: RunState; width?: number }) {
   const W = width, H = 48;
   const frame = s.frame;
   const gid = `oi-tr-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  if (!frame || !s.rounds.length) return <div style={{ width: W, height: H }} />;
+  // Nothing to draw until a period is pooled: give the space to the words beside it.
+  if (!frame || !s.rounds.length) return null;
   const n = s.rounds.length + (s.report ? 1 : 0);
   const x = (i: number) => (n === 1 ? W / 2 : 4 + (i / (n - 1)) * (W - 8));
 

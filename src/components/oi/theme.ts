@@ -1,10 +1,11 @@
 /**
  * OSIRIS OI: the panel's design tokens.
  *
- * OI is gold and black. Gold leads: what is selected, what is live, the
- * prediction. Champagne (`alt`) is its quiet second, where the platform would
- * use cyan, and ivory and greys carry the rest. Red is kept for failure. In
- * Ghost the same tokens follow that theme's violets.
+ * Forecast is gold and black. Gold leads: what is selected, what is live, the
+ * prediction. Champagne (`alt`) is its quiet second, and ivory and greys
+ * carry the rest. Red is kept for failure. Assist keeps the platform's blue
+ * (`blue`), so the two ways of using OI never look alike. In Ghost the same
+ * tokens follow that theme's violets.
  *
  * The arcs keep their own three colours, set in the Style Studio; OI shows
  * them only where it draws or explains the arcs (the legend, the graph's
@@ -16,8 +17,10 @@ export const T = {
   gold: 'var(--gold-primary)',
   goldLight: 'var(--gold-light)',
   goldDim: 'var(--gold-dim)',
-  /** Champagne: OI's second tone. */
+  /** Champagne: Forecast's second tone. */
   alt: 'var(--oi-alt)',
+  /** Assist's blue: the platform's own cyan. */
+  blue: 'var(--cyan-primary)',
   heading: 'var(--text-heading)',
   text: 'var(--text-primary)',
   body: 'var(--text-secondary)',
@@ -28,6 +31,8 @@ export const T = {
   lineStrong: 'var(--border-primary)',
   active: 'var(--border-active)',
   red: 'var(--alert-red)',
+  /** A price that rose, in Assist's market cards (with red for one that fell). */
+  green: 'var(--alert-green)',
   /** The arcs' three colours, from the Style Studio. */
   support: 'var(--map-oi-support, #b388ff)',
   oppose: 'var(--map-oi-oppose, #ff5ccb)',
@@ -43,6 +48,7 @@ export const ANCHOR = { baseline: T.text, market: T.alt, simulation: T.gold, pre
 
 export const gold = (a: number) => `rgba(var(--gold-rgb),${a})`;
 export const alt = (a: number) => `rgba(var(--oi-alt-rgb),${a})`;
+export const blue = (a: number) => `rgba(var(--cyan-rgb),${a})`;
 export const ivory = (a: number) => `rgba(232,230,224,${a})`;
 export const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 /** The arcs' colour for a line's tone: for drawing the arcs and the graph's lines, and the legend that explains them. */

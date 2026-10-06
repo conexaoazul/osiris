@@ -56,17 +56,19 @@ export function ReportBody({ s, runId, selected, onSelect }: { s: RunState; runI
     <section className="flex flex-col gap-5" aria-label="Prediction">
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <Overline color={T.gold}>Prediction</Overline>
+          {/* The tab or the column above already says this is the prediction: lead with how sure it is. */}
+          <Confidence level={r.confidence} />
           <div className="ml-auto flex items-center -mr-2">
-            <TextButton onClick={copy} title="Copy a link that replays this run">{copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} Link</TextButton>
+            <TextButton onClick={copy} title="Copy a link that replays this run">{copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} {copied ? 'Copied' : 'Link'}</TextButton>
             <TextButton onClick={download} title="Download the prediction as Markdown"><Download className="w-3 h-3" /> Export</TextButton>
           </div>
         </div>
         <h3 className="text-[15px] font-semibold leading-snug text-[var(--text-heading)]">{r.headline}</h3>
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <Confidence level={r.confidence} />
-          {frame?.kind === 'binary' && <span className="text-[10px] font-mono tracking-[0.06em] text-[var(--text-muted)]" title="The simulated worlds pooled, and the report's calibrated figure">WORLDS {pct(r.swarm)} · REPORT <span className="text-[var(--gold-light)]">{pct(r.probability)}</span></span>}
-        </div>
+        {frame?.kind === 'binary' && (
+          <p className="mt-1.5 text-[10px] font-mono tracking-[0.06em] text-[var(--text-muted)]" title="The simulated worlds pooled, and the report's calibrated figure">
+            WORLDS POOLED {pct(r.swarm)} · CALIBRATED <span className="text-[var(--gold-light)]">{pct(r.probability)}</span>
+          </p>
+        )}
         {r.deviation && <p className="mt-2.5 text-[11.5px] italic leading-relaxed text-[var(--text-muted)]">{r.deviation}</p>}
         <p className="mt-3 text-[12px] leading-[1.7] text-[var(--text-secondary)]"><Mentions text={r.summary} s={s} onSelect={onSelect} /></p>
       </div>
