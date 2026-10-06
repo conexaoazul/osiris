@@ -290,10 +290,7 @@ export function AssistView(p: AssistViewProps) {
               <Face size={40} />
               <div className="min-w-0 pt-0.5">
                 <h3 className="text-[16px] font-semibold text-[var(--text-heading)]">Hey, I&apos;m your map assistant</h3>
-                <p className="mt-0.5 text-[10.5px] text-[var(--text-muted)]" title="OI stands for Osiris Intelligence">
-                  Powered by <span className="font-medium" style={{ color: T.blue }}>OI</span> · Osiris Intelligence
-                </p>
-                <p className="mt-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+                <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
                   Ask me about anything on the map, by typing or out loud. I&apos;ll fly you there, switch on the right layers and show you what&apos;s live.
                 </p>
               </div>
