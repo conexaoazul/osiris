@@ -235,6 +235,8 @@ export default function Dashboard() {
   const [selectedPolygon, setSelectedPolygon] = useState<string | null>(null);
   const [showDesktopSearch, setShowDesktopSearch] = useState(false);
   const [showDirections, setShowDirections] = useState(false);
+  // A destination Search hands to Directions ("Directions to here"); its stamp remounts the planner with it.
+  const [routeTarget, setRouteTarget] = useState<{ label: string; context?: string; lat: number; lng: number; kind?: string; ts: number } | null>(null);
   const [activeRoute, setActiveRoute] = useState<
     (RouteResult & {
       from: { lat: number; lng: number };
@@ -762,6 +764,16 @@ export default function Dashboard() {
         if (d.stats) setGlobalStats(d.stats);
       })
       .catch(console.error);
+  }, []);
+
+  /** From Search: open Directions with this place as the destination, and show where it is. */
+  const openDirectionsTo = useCallback((p: { label: string; context?: string; lat: number; lng: number; kind?: string }) => {
+    setRouteTarget({ ...p, ts: Date.now() });
+    setActiveRoute(null);
+    setShowDesktopSearch(false);
+    setMobilePanel(null);
+    setShowDirections(true);
+    setFlyToLocation({ lat: p.lat, lng: p.lng, zoom: 14, ts: Date.now() });
   }, []);
 
   // Keyboard shortcuts
@@ -1576,9 +1588,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── DIRECTIONS — opens beside the right-hand tool rail ── */}
+      {/* ── DIRECTIONS — opens beside the right-hand tool rail, under the top bar ── */}
       <div
-        className="absolute top-3 z-[400] w-[min(92vw,372px)] pointer-events-auto"
+        className={`absolute ${isMobile ? 'top-3' : 'top-[64px]'} z-[400] w-[min(92vw,384px)] pointer-events-auto`}
         style={isMobile ? { left: '50%', transform: 'translateX(-50%)' } : { right: '56px' }}
       >
         {navSession ? (
@@ -1621,6 +1633,8 @@ export default function Dashboard() {
             aria-hidden={Boolean(navSession)}
           >
             <DirectionsBar
+              key={routeTarget?.ts ?? 'plan'}
+              initialTo={routeTarget}
               center={mapCenter ? { lat: mapCenter.lat, lng: mapCenter.lng } : null}
               onRoute={(r) => setActiveRoute(r)}
               onLiveLocation={setLiveLocation}
@@ -1631,11 +1645,23 @@ export default function Dashboard() {
                 setFollowUser(true);
               }}
               onLocate={(lat, lng, zoom) => setFlyToLocation({ lat, lng, zoom, ts: Date.now() })}
-              onClose={() => { setShowDirections(false); setActiveRoute(null); }}
+              onClose={() => { setShowDirections(false); setActiveRoute(null); setRouteTarget(null); }}
             />
           </motion.div>
         )}
       </div>
+
+      {/* ── SEARCH — a spotlight at the top of the map: places, addresses, coordinates ── */}
+      <AnimatePresence>
+        {showDesktopSearch && !isMobile && (
+          <div data-hud className="absolute top-[92px] left-1/2 -translate-x-1/2 z-[450] w-[min(560px,calc(100vw-180px))] pointer-events-auto">
+            <motion.div initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ duration: 0.16 }}>
+              <SearchBar center={mapCenter} onClose={() => setShowDesktopSearch(false)} onDirections={openDirectionsTo}
+                onLocate={(lat, lng, zoom) => setFlyToLocation({ lat, lng, zoom, ts: Date.now() })} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
 
       {/* ── FLIGHT WATCH ── */}
@@ -1881,7 +1907,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowDirections(!showDirections); if (showDirections) { setActiveRoute(null); } setShowDesktopSearch(false); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showDirections ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Directions — turn-by-turn routing" aria-label="Directions" aria-expanded={showDirections}>
+          <button onClick={() => { setShowDirections(!showDirections); setRouteTarget(null); if (showDirections) { setActiveRoute(null); } setShowDesktopSearch(false); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showDirections ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Directions — turn-by-turn routing" aria-label="Directions" aria-expanded={showDirections}>
             <Route className={`w-4 h-4 ${showDirections ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
             {showDirections && (
               <span
@@ -1894,7 +1920,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowDesktopSearch(!showDesktopSearch); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showDesktopSearch ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Search — find locations, cities, coordinates" aria-label="Search" aria-expanded={showDesktopSearch}>
+          <button data-search-toggle onClick={() => { setShowDesktopSearch(!showDesktopSearch); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showDesktopSearch ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Search — find locations, cities, coordinates" aria-label="Search" aria-expanded={showDesktopSearch}>
             <Search className={`w-4 h-4 ${showDesktopSearch ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
             {showDesktopSearch && (
               <span
@@ -1904,13 +1930,6 @@ export default function Dashboard() {
             )}
           </button>
           <span className="absolute right-11 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">SEARCH</span>
-          <AnimatePresence>
-            {showDesktopSearch && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80">
-                <SearchBar alwaysExpanded center={mapCenter} onLocate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); setShowDesktopSearch(false); }} />
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
         {/* Separator */}
@@ -2170,7 +2189,7 @@ export default function Dashboard() {
                   {mobilePanel === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />}
                   {mobilePanel === 'search' && (
                     <div className="space-y-2">
-                      <SearchBar center={mapCenter} onLocate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); setMobilePanel(null); }} />
+                      <SearchBar embedded center={mapCenter} onDirections={openDirectionsTo} onLocate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); setMobilePanel(null); }} />
                       <SharePanel mapView={mapView} activeLayers={activeLayers} mouseCoords={null} />
                     </div>
                   )}
