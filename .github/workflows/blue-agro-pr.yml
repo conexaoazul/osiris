@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'src/lib/agro/**'
+      - 'src/components/agro/**'
+      - 'src/app/agro/**'
       - 'docs/blue-agro/**'
       - '.github/workflows/blue-agro-pr.yml'
       - 'package.json'
