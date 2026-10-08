@@ -28,3 +28,5 @@ jobs:
         run: npx vitest run src/lib/agro/proximity.test.ts
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
