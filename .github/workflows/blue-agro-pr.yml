@@ -1,0 +1,32 @@
+name: Blue Agro PR
+on:
+  pull_request:
+    paths:
+      - 'src/lib/agro/**'
+      - 'src/components/agro/**'
+      - 'src/app/agro/**'
+      - 'docs/blue-agro/**'
+      - '.github/workflows/blue-agro-pr.yml'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  agro-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run Blue Agro regression tests
+        run: npx vitest run src/lib/agro
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
