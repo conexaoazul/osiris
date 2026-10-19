@@ -8,6 +8,9 @@ metadados reais de cenas Sentinel-2 L2A no Earth Search STAC da Element 84.
 - Endpoint local: `GET /api/agro/satellite?farm=ba|rs`.
 - Fonte externa fixa: `POST https://earth-search.aws.element84.com/v1/search`.
 - Coleção: `sentinel-2-c1-l2a`; janela: últimos 180 dias.
+- `query: { "eo:cloud_cover": { "lt": 35 } }` no upstream: cenas com <35% de nuvens no tile inteiro; não garante nuvem baixa no campo.
+- Consulta GET somente leitura ao provedor realizada em 19/10/2026 para AOI BA com filtro STAC: retornou itens de 16/10, 06/10, 01/10 etc. Isto verifica disponibilidade do provedor, **não** o endpoint da aplicação Next.js em QA.
+- As AOIs BA/RS são caixas ilustrativas e não representam polígonos ou propriedades agropecuárias reais.
 - Apenas duas BBOXs públicas e ilustrativas (sem coordenadas de clientes).
 - Máximo de 18 observações upstream, 6 cenas retornadas, timeout 10 s e resposta 2 MB.
 - Nenhum token, credencial, webhook, mensagem, ação Odoo ou mutação no banco.
