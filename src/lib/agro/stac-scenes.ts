@@ -32,6 +32,9 @@ export function buildSatelliteSearch(areaId: DemoAreaId, now: Date = new Date())
     collections: [STAC_COLLECTION],
     bbox: [...DEMO_AREAS[areaId].bbox],
     datetime: `${start.toISOString()}/${now.toISOString()}`,
+    // Filter scenes with large cloud cover before the 18-item cap.
+    // Cloud fraction is scene-wide and is NOT a field-level measurement.
+    query: { 'eo:cloud_cover': { lt: 35 } },
     limit: 18,
     sortby: [{ field: 'properties.datetime', direction: 'desc' }],
   };
