@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Map, { Marker, NavigationControl, Source, Layer } from 'react-map-gl/maplibre';
 import { distanceKm, nearbyHotspots, type GeoPoint, type GeoHotspot } from '@/lib/agro/proximity';
+import SatelliteScenesPanel from '@/components/agro/SatelliteScenesPanel';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 const FARMS = [
@@ -79,6 +80,7 @@ export default function AgroMapDashboard() {
           </div>)}
           {!nearby.length && <p className="text-xs text-slate-300">Nenhum ponto demonstrativo dentro do raio.</p>}
         </div>
+        <SatelliteScenesPanel key={farm.id} area={farm.id} />
         <p className="text-xs text-slate-400">A distância é calculada do centro da propriedade; esta demonstração não usa polígonos de talhões.</p>
       </aside>
       <section className="rounded-xl overflow-hidden border border-slate-700 h-[480px] md:h-[680px] relative" aria-label="Mapa demonstrativo Agro">
