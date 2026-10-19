@@ -70,7 +70,7 @@ export function normalizeSatelliteScenes(payload: unknown, maxScenes = 6): Satel
       date,
       cloudCover,
       stacItemUrl: `${STAC_ORIGIN}${path}`,
-      stacBrowserUrl: `https://radiantearth.github.io/stac-browser/#/external/earth-search.aws.element84.com/v1${path}`,
+      stacBrowserUrl: `https://browser.moregeo.it/external/earth-search.aws.element84.com/v1${path}`,
     });
     seen.add(item.id);
   }
