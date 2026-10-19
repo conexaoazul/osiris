@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   try {
     const response = await fetch(`${STAC_ORIGIN}/search`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json', Accept: 'application/geo+json, application/json' },
       body: JSON.stringify(search),
       signal: AbortSignal.timeout(10000),
