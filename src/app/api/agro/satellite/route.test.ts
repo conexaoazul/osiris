@@ -49,6 +49,7 @@ describe('GET /api/agro/satellite', () => {
     const body = JSON.parse(opts.body);
     expect(body.bbox).toEqual([-38.54, -12.94, -38.46, -12.86]);
     expect(body.collections).toEqual(['sentinel-2-c1-l2a']);
+    expect(body.query).toEqual({ 'eo:cloud_cover': { lt: 35 } });
     expect(JSON.stringify(body)).not.toContain('secret');
   });
 
