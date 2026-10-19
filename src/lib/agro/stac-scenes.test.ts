@@ -13,6 +13,7 @@ describe('Blue Agro STAC metadata (read-only)', () => {
     expect(q.collections).toEqual([STAC_COLLECTION]);
     expect(q.bbox).toEqual([-38.54, -12.94, -38.46, -12.86]);
     expect(q.limit).toBe(18);
+    expect(q.query).toEqual({ 'eo:cloud_cover': { lt: 35 } });
     expect(q.datetime).toContain('2026-10-19T12:00:00.000Z');
   });
 
