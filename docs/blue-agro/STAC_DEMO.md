@@ -15,6 +15,7 @@ metadados reais de cenas Sentinel-2 L2A no Earth Search STAC da Element 84.
 - Máximo de 18 observações upstream, 6 cenas retornadas, timeout 10 s e resposta 2 MB.
 - Nenhum token, credencial, webhook, mensagem, ação Odoo ou mutação no banco.
 - Datas e cobertura de nuvens dos *itens*, não sensores de altura.
+- Previews apontam diretamente para o domínio atual do STAC Browser (`https://browser.moregeo.it/external/...`), pois o endereço histórico `radiantearth.github.io/stac-browser` redireciona. A navegação e carregamento de Item ainda exigem smoke browser em QA.
 - Previews são links externos para STAC Browser; **não** são ortomosaicos
   processados, mapas NDVI, geometrias 3D ou estimativas de altura.
 
