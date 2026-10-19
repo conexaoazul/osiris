@@ -32,6 +32,8 @@ describe('Blue Agro STAC metadata (read-only)', () => {
     expect(scenes[1].cloudCover).toBe(15);
     expect(scenes[1].stacItemUrl).toBe('https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_VALID_OLD');
     expect(scenes[1].stacItemUrl).not.toContain('evil.example');
+    expect(scenes[1].stacBrowserUrl).toBe('https://browser.moregeo.it/external/earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_VALID_OLD');
+    expect(scenes[1].stacBrowserUrl).not.toContain('evil.example');
   });
 
   it('fails closed on malformed collections or invalid bounds', () => {
