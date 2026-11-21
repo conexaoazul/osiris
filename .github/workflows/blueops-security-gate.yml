@@ -1,0 +1,48 @@
+name: OSIRIS targeted security gate
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'next.config.ts'
+      - 'src/app/api/proxy-tiles/**'
+      - 'src/app/docs/apiCatalog.ts'
+      - '.github/workflows/blueops-security-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-security:
+    name: Runtime dependency and proxy checks (no deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install exactly locked dependencies
+        run: npm ci --no-fund
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint touched TypeScript files
+        run: npx eslint next.config.ts src/app/api/proxy-tiles/route.ts src/app/api/proxy-tiles/route.test.ts src/app/docs/apiCatalog.ts
+
+      - name: Test restricted tile proxy
+        run: npx vitest run src/app/api/proxy-tiles/route.test.ts
+
+      - name: Compile production image application
+        run: npm run build
+
+# Full-suite failures inherited from master are tracked separately; this
+# focused gate does not indicate full application QA or release approval.
