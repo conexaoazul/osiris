@@ -1,0 +1,38 @@
+name: BlueOps OSIRIS manifest preflight
+
+on:
+  pull_request:
+    paths:
+      - "deploy/blueops-osiris/**"
+      - ".github/workflows/blueops-osiris-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-manifest:
+    name: Validate manifest without deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # This tag is only a dummy syntax-validation value. The job never pulls or deploys it.
+      OSIRIS_IMAGE: ghcr.io/conexaoazul/osiris:manifest-syntax-only
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse Docker Compose
+        run: docker compose -f deploy/blueops-osiris/swarm.yml config --quiet
+
+      - name: Parse Docker Swarm stack
+        run: docker stack config --compose-file deploy/blueops-osiris/swarm.yml > /dev/null
+
+      - name: Assert internal-only one-replica defaults
+        run: |
+          docker compose -f deploy/blueops-osiris/swarm.yml config --format json |
+            jq -e '
+              (.services.osiris.ports == null) and
+              (.services.osiris.environment.SCANNER_URL == null) and
+              (.services.osiris.environment.SCANNER_KEY == null) and
+              (.services.osiris.deploy.replicas == 1)
+            '
