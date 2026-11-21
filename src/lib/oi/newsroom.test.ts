@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { FEEDS, isSocial, parseFeed, rankStories, searchNewsroom, tickerFeed } from './newsroom';
 import type { Fetcher } from './web';
 
@@ -80,11 +80,19 @@ describe('ranking the stories', () => {
 
 describe('searching the newsroom', () => {
   it('reads only the desks asked for, plus the tickers’ newswires', async () => {
-    const asked: string[] = [];
-    const api: Fetcher = async url => { asked.push(url); return new Response(RSS, { status: 200 }); };
-    const out = await searchNewsroom({ desks: ['crypto'], tickers: ['SOL-USD'], words: ['solana', 'etf'], names: ['solana'] }, api, new AbortController().signal);
-    expect(asked.length).toBe(FEEDS.filter(f => f.desks.includes('crypto')).length + 1);
-    expect(asked).toContain(tickerFeed('SOL-USD'));
-    expect(out[0].title).toBe('Solana ETF wins approval as SEC clears spot funds');
+    // The fixture is dated October 2026. Keep its freshness window fixed so
+    // this test remains deterministic when the wall clock advances.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-03T00:00:00Z'));
+    try {
+      const asked: string[] = [];
+      const api: Fetcher = async url => { asked.push(url); return new Response(RSS, { status: 200 }); };
+      const out = await searchNewsroom({ desks: ['crypto'], tickers: ['SOL-USD'], words: ['solana', 'etf'], names: ['solana'] }, api, new AbortController().signal);
+      expect(asked.length).toBe(FEEDS.filter(f => f.desks.includes('crypto')).length + 1);
+      expect(asked).toContain(tickerFeed('SOL-USD'));
+      expect(out[0].title).toBe('Solana ETF wins approval as SEC clears spot funds');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
