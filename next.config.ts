@@ -27,10 +27,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  poweredByHeader: false,
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '**' },
-    ],
+    // No application UI uses next/image. Prevent the built-in image
+    // optimizer from fetching attacker-controlled external URLs.
+    unoptimized: true,
   },
   async headers() {
     return [
