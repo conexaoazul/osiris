@@ -1,0 +1,31 @@
+name: BlueOps QA gate (no deploy)
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/blueops-qa-gate.yml
+      - src/app/api/cctv/route.ts
+      - src/lib/cctv-snapshot.ts
+      - src/lib/oi/context.test.ts
+      - src/lib/oi/newsroom.test.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --reporter=dot
+      - run: npx tsc --noEmit
+      # route.ts has pre-existing `no-explicit-any` violations outside this
+      # narrow change; lint the other modified files without hiding them.
+      - run: npx eslint src/lib/cctv-snapshot.ts src/lib/oi/context.test.ts src/lib/oi/newsroom.test.ts

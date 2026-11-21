@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { gatherContext, marketLine, scoreNews, selectContext, terms, type RawNews, type Sources } from './context';
 
 const NOW = Date.parse('2026-10-02T12:00:00Z');
@@ -69,12 +69,18 @@ describe('marketLine', () => {
 
 describe('gatherContext', () => {
   it('carries on without a source that fails', async () => {
-    const sources: Sources = {
-      news: async () => NEWS,
-      quakes: async () => { throw new Error('USGS down'); },
-      quotes: async () => [],
-    };
-    const items = await gatherContext('Iran enrichment talks', '', 8, sources);
-    expect(items.length).toBeGreaterThan(0);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      const sources: Sources = {
+        news: async () => NEWS,
+        quakes: async () => { throw new Error('USGS down'); },
+        quotes: async () => [],
+      };
+      const items = await gatherContext('Iran enrichment talks', '', 8, sources);
+      expect(items.length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
